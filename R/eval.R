@@ -117,13 +117,40 @@
 # enough to matter: on an Apple M-series the elementwise optimum was 2048 while
 # sum(x) wanted 128, and forcing one compromise value cost about 15 percent on
 # whichever side lost. So a reduction uses simdfuse.block_red when that is set.
-.sf_block_for <- function(red, block) {
+# The largest block whose register arena still fits the share of L1 we allow
+# it. The arena is nreg * block * 8 bytes and it is read and written on every
+# instruction, so once it stops fitting, every block pays L2 latency for what
+# should be register traffic. Nothing in a single tuned block size can account
+# for this, because the register count is a property of the expression and not
+# of the machine: measured on one host, a Gaussian log-likelihood needs eight
+# registers and runs fastest at block 256, while a three-register expression on
+# the same host and the same data is fastest at four times that. Left uncapped
+# on a 256-thread machine, the log-likelihood reduction scaled 3.0x where its
+# simpler neighbours reached 8.6x to 12.5x.
+#
+# A third of L1 rather than all of it: the input and output streams need lines
+# too, and a third is what measurement put the optimum at on three machines.
+.sf_block_cap <- function(nreg) {
+  if (is.null(nreg) || !is.finite(nreg) || nreg < 1L) return(NA_integer_)
+  l1 <- getOption("simdfuse.l1_bytes")
+  sh <- getOption("simdfuse.l1_share")
+  if (is.null(l1) || is.null(sh) || !is.finite(l1) || !is.finite(sh)) return(NA_integer_)
+  cap <- (l1 * sh) %/% (nreg * 8)
+  cap <- (as.integer(cap) %/% 8L) * 8L    # whole lanes, for any supported width
+  max(cap, 64L)                            # never so small that dispatch dominates
+}
+
+.sf_block_for <- function(red, block, nreg = NULL) {
+  # An explicit block= is an instruction, not a default: it is honoured as
+  # given. The cap applies to the session default, which cannot know what
+  # expression it will be used for.
   if (!is.null(block)) return(as.integer(block))
-  if (!identical(red, "none")) {
+  b <- if (!identical(red, "none")) {
     br <- getOption("simdfuse.block_red")
-    if (!is.null(br) && !is.na(br)) return(as.integer(br))
-  }
-  as.integer(getOption("simdfuse.block"))
+    if (!is.null(br) && !is.na(br)) as.integer(br) else as.integer(getOption("simdfuse.block"))
+  } else as.integer(getOption("simdfuse.block"))
+  cap <- .sf_block_cap(nreg)
+  if (!is.na(cap) && cap < b) cap else b
 }
 
 # Which elementary functions actually use their vectorised form. Only consulted
@@ -137,7 +164,7 @@
 }
 
 .sf_dispatch <- function(prog, inp, red, na.rm, block, threads) {
-  blk <- .sf_block_for(red, block)
+  blk <- .sf_block_for(red, block, prog$nreg)
   thr <- as.integer(threads %||% getOption("simdfuse.threads"))
   out <- .Call(C_sf_eval, prog$code, prog$consts, inp$vars,
                as.double(inp$n), prog$nreg, prog$nprologue, blk,

@@ -12,6 +12,7 @@ sf_options(
   math = NULL,
   fast_exp = NULL,
   fast_log = NULL,
+  l1_bytes = NULL,
   cache_max = NULL
 )
 }
@@ -53,6 +54,13 @@ polynomial actually wins depends on the lane width and on the quality of
 the local \code{libm}, and the two do not point the same way: a two-lane NEON
 \code{exp()} beat Apple's \code{libm} by 1.7x while a two-lane SSE2 \code{exp()} lost to
 glibc by 0.9x. \code{\link[=sf_tune]{sf_tune()}} measures both and sets them.}
+
+\item{l1_bytes}{Size of the L1 data cache in bytes, detected at load. The
+block size is capped so that a program's register arena
+(\code{nreg * block * 8} bytes) stays within a third of this, because the
+register count depends on the expression while a tuned block size cannot.
+Set it by hand if detection got it wrong; \code{sf_options()} reports the value in
+use.}
 
 \item{cache_max}{Number of compiled programs to keep.}
 }

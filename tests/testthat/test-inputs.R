@@ -79,3 +79,50 @@ test_that("block aliasing is exact at every boundary", {
   invisible(sf_eval(z * 2 + 1)); invisible(sf_sum(quote(z)))
   expect_identical(z, before)
 })
+
+test_that("the block cap keeps a program's register arena inside L1", {
+  old <- sf_options()
+  on.exit(sf_options(block = old$block, block_red = old$block_red,
+                     l1_bytes = old$l1_bytes))
+
+  # the cap holds the arena at a fixed share of L1 whatever the register count
+  sf_options(l1_bytes = 49152L)                        # 48 KiB
+  caps <- vapply(c(1L, 2L, 4L, 8L, 16L), simdfuse:::.sf_block_cap, 1L)
+  arena <- caps * c(1L, 2L, 4L, 8L, 16L) * 8
+  expect_true(all(arena <= 49152 / 3 + 64 * 8))        # within rounding
+  expect_true(all(diff(caps) <= 0))                    # monotone in nreg
+  expect_true(all(caps >= 64L))                        # never degenerate
+  expect_true(all(caps %% 8L == 0L))                   # whole lanes
+
+  # a bigger cache permits a bigger block
+  sf_options(l1_bytes = 196608L)
+  expect_gt(simdfuse:::.sf_block_cap(8L), caps[4])
+  sf_options(l1_bytes = 49152L)
+
+  set.seed(5)
+  x <- runif(4000, .5, 3); mu <- mean(x); s <- sd(x)
+  ll <- quote(-0.5 * log(2 * pi) - log(s) - 0.5 * ((x - mu) / s)^2)
+
+  # the cap applies to the session default
+  sf_options(block = 16384L, block_red = 16384L)
+  expect_lt(.sf_block_for("sum", NULL, 8L), 16384L)
+  expect_identical(.sf_block_for("sum", NULL, 8L), simdfuse:::.sf_block_cap(8L))
+
+  # but an explicit block= is an instruction and is honoured as given
+  expect_identical(.sf_block_for("sum", 16384L, 8L), 16384L)
+  expect_identical(.sf_block_for("none", 4096L, 20L), 4096L)
+
+  # a one-register program is not capped below the session default
+  expect_identical(.sf_block_for("none", NULL, 1L),
+                   min(16384L, simdfuse:::.sf_block_cap(1L)))
+
+  # and the results do not change because of any of it
+  for_each_isa(function(isa) {
+    for (b in c(128L, 1024L, 16384L)) {
+      sf_options(block = b, block_red = b)
+      expect_equal(sf_sum(ll), sum(-0.5*log(2*pi) - log(s) - 0.5*((x-mu)/s)^2),
+                   tolerance = 1e-12)
+      expect_identical(sf_eval(ll), -0.5*log(2*pi) - log(s) - 0.5*((x-mu)/s)^2)
+    }
+  })
+})

@@ -1,0 +1,132 @@
+/var/spool/slurmd/job31947/slurm_script: 4: module: not found
+== before tuning ==
+    block block_red  fast_exp  fast_log       isa 
+    "128"        NA    "TRUE"    "TRUE"    "auto" 
+
+== tuning at n = 1e8 ==
+simdfuse block calibration, n = 100,000,000, isa = avx2+fma
+ block shallow    deep     math  reduce relative relative_red
+    64 223.153 313.491 1269.284 132.664    1.190        1.169
+   128 437.017 273.214 1497.943 243.522    1.503        2.146
+   256 341.360 285.703 1435.134 197.922    1.385        1.744
+   512 162.104 308.396 1272.816 124.988    1.065        1.101
+  1024 153.864 312.847 1254.915 113.477    1.046        1.000
+  2048 191.462 363.788 1261.810 121.743    1.186        1.073
+  4096 209.229 356.358 1254.085 122.642    1.210        1.081
+
+best block, elementwise: 1024
+best block, reductions : 1024
+(both set for this session)
+(sizes within 2% of the best: 2 elementwise, 1 reductions -- a flat range rather than a sharp optimum, so the exact value matters less than staying inside it)
+to keep them, add to your .Rprofile:
+  options(simdfuse.block = 1024L, simdfuse.block_red = 1024L)
+
+fast math (vectorised polynomial vs system libm)
+  exp   1.95x to  1.97x over 3 input ranges -> vectorised
+  log   1.61x to  2.65x over 3 input ranges -> vectorised
+
+== after tuning (these are what the benchmark will use) ==
+    block block_red  fast_exp  fast_log 
+     1024      1024         1         1 
+
+== full sweep ==
+  fusion ... 80.6s
+  mathfun ... 14.1s
+  reduce ... 20.0s
+  isa ... 7.9s
+  block ... 72.0s
+  threads ... 26.3s
+  skeletons ... 17.1s
+  memory ... 0.5s
+
+== reductions out of cache, n = 5e8 ==
+  reduce ... 80.4s
+
+wrote /mnt/home/bogdan.oancea/simdfuse-epyc-tuned.csv with 188 rows
+
+== environment as measured ==
+$platform
+[1] "x86_64-pc-linux-gnu"
+
+$r_version
+[1] "4.6.2"
+
+$isa
+[1] "avx2+fma"
+
+$lanes
+[1] 4
+
+$available
+[1] "scalar, sse2, avx2"
+
+$openmp
+[1] TRUE
+
+$max_threads
+[1] 256
+
+$cores
+[1] 256
+
+$logical
+[1] 256
+
+$cache
+[1] "L1 32K L2 512K L3 32768K"
+
+$omp_env
+[1] "OPENBLAS_NUM_THREADS=1"
+
+$under_check
+[1] FALSE
+
+        isa       lanes      forced  available1  available2  available3 
+ "avx2+fma"         "4"     "FALSE"    "scalar"      "sse2"      "avx2" 
+     openmp max_threads  task_elems instr_width 
+     "TRUE"       "256"     "65536"         "5" 
+
+42 of 186 timings varied more than 15% between repetitions
+   bench            case               engine      seconds    spread
+  fusion           8 ops               base R 4.779758e-05 4.2162656
+  fusion          16 ops               base R 9.644300e-05 3.3950813
+  fusion           8 ops             simdfuse 4.054416e-04 2.7595127
+  reduce        max(x*x) simdfuse all threads 2.893941e-04 1.5891454
+  fusion            1 op             simdfuse 3.206985e-04 1.1950297
+  fusion           2 ops             simdfuse 1.113158e-02 0.6830580
+   block        fast exp                 4096 2.250174e-02 0.5887666
+  reduce gaussian loglik simdfuse all threads 1.123937e-03 0.5448050
+  fusion            1 op               base R 2.432675e-03 0.4676568
+  fusion            1 op             simdfuse 1.318669e-04 0.4665886
+  reduce          sum(x)       collapse::fsum 2.357314e-01 0.4453708
+  fusion           2 ops               base R 1.048888e-02 0.4447667
+  fusion          16 ops               base R 1.834467e-02 0.4305762
+   block           8 ops                   16 4.021649e-02 0.3641186
+   block           8 ops                 2048 3.181422e-02 0.3639517
+    scan          cumsum      simdfuse serial 2.970759e-02 0.3461603
+  fusion            1 op               base R 5.282604e-04 0.3449409
+   block           8 ops                  384 2.633551e-02 0.3381910
+  fusion            1 op               base R 5.668945e-05 0.3275328
+  fusion           2 ops               base R 5.692739e-05 0.3256537
+   block          16 ops                 4096 4.884607e-02 0.2833578
+   block           2 ops                   64 1.863134e-02 0.2740053
+  fusion           4 ops               base R 1.165937e-04 0.2611956
+  fusion           2 ops               base R 3.047829e-03 0.2576708
+  fusion           8 ops               base R 1.280210e-02 0.2470975
+   block           8 ops                  192 2.513310e-02 0.2305061
+   block           2 ops                 4096 1.815441e-02 0.2303818
+  fusion           4 ops             simdfuse 2.121917e-02 0.2242307
+  reduce          sum(x) simdfuse all threads 4.241114e-02 0.2184398
+  fusion           8 ops             simdfuse 1.616180e-04 0.2152502
+   block          16 ops                   16 5.990879e-02 0.2132054
+   block        fast exp                 1024 2.652740e-02 0.2074397
+  fusion            1 op             simdfuse 2.767358e-03 0.2027020
+   block           2 ops                  192 3.168416e-02 0.1984027
+   block           2 ops                  512 1.641108e-02 0.1930330
+  fusion            1 op             simdfuse 9.475078e-03 0.1748170
+    scan  cumsum(log(x))             simdfuse 4.253164e-03 0.1662274
+ threads               8             simdfuse 1.027216e-01 0.1560478
+    scan          cumsum    simdfuse parallel 2.656298e-03 0.1539916
+   block           2 ops                 1024 1.662031e-02 0.1538072
+  fusion           8 ops               base R 5.504408e-02 0.1516869
+   block          16 ops                  768 3.603072e-02 0.1513686

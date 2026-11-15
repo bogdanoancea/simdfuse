@@ -36,13 +36,19 @@
 #'   the local `libm`, and the two do not point the same way: a two-lane NEON
 #'   `exp()` beat Apple's `libm` by 1.7x while a two-lane SSE2 `exp()` lost to
 #'   glibc by 0.9x. [sf_tune()] measures both and sets them.
+#' @param l1_bytes Size of the L1 data cache in bytes, detected at load. The
+#'   block size is capped so that a program's register arena
+#'   (`nreg * block * 8` bytes) stays within a third of this, because the
+#'   register count depends on the expression while a tuned block size cannot.
+#'   Set it by hand if detection got it wrong; `sf_options()` reports the value in
+#'   use.
 #' @param cache_max Number of compiled programs to keep.
 #'
 #' @return A list of the settings in effect, invisibly when setting.
 #' @export
 sf_options <- function(block = NULL, block_red = NULL, threads = NULL,
                        isa = NULL, math = NULL, fast_exp = NULL,
-                       fast_log = NULL, cache_max = NULL) {
+                       fast_log = NULL, l1_bytes = NULL, cache_max = NULL) {
   changed <- FALSE
   if (!is.null(block)) {
     block <- as.integer(block)
@@ -86,6 +92,12 @@ sf_options <- function(block = NULL, block_red = NULL, threads = NULL,
       changed <- TRUE
     }
   }
+  if (!is.null(l1_bytes)) {
+    v <- as.numeric(l1_bytes)[1]
+    if (!is.finite(v) || v < 4096)
+      stop("simdfuse: `l1_bytes` must be at least 4096", call. = FALSE)
+    options(simdfuse.l1_bytes = as.integer(v)); changed <- TRUE
+  }
   if (!is.null(cache_max)) {
     cache_max <- as.integer(cache_max)
     if (is.na(cache_max) || cache_max < 0L) stop("simdfuse: `cache_max` must be >= 0")
@@ -99,6 +111,7 @@ sf_options <- function(block = NULL, block_red = NULL, threads = NULL,
     math      = getOption("simdfuse.math"),
     fast_exp  = getOption("simdfuse.fast_exp"),
     fast_log  = getOption("simdfuse.fast_log"),
+    l1_bytes  = getOption("simdfuse.l1_bytes"),
     cache_max = getOption("simdfuse.cache_max")
   )
   if (changed) invisible(cur) else cur
