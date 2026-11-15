@@ -123,7 +123,14 @@ sf_tune <- function(blocks = c(64L, 128L, 256L, 512L, 1024L, 2048L, 4096L),
   pick <- function(mine, other) {
     ok <- tied(mine)
     ok2 <- ok[other[ok] <= min(other[ok]) * TOL]   # still tied on both
-    blocks[min(ok2)]                               # smallest, so it is reproducible
+    # Largest of the sizes that measure the same, not smallest. Fewer blocks
+    # means the per-block dispatch is amortised over more elements, and the
+    # cost of getting this wrong is not symmetric: measured on a 2-lane
+    # machine, a parallel reduction at block 64 ran about 10% slower than the
+    # same reduction at 128, while the two were within 2% single-threaded. The
+    # single-thread sweep that chooses the block cannot see that, so where
+    # measurement cannot separate two sizes, take the one with less overhead.
+    blocks[max(ok2)]
   }
   best     <- pick(gm, gm_red)
   best_red <- pick(gm_red, gm)
