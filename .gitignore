@@ -30,3 +30,9 @@ inst/benchmarks/*.csv
 # fail looking for doc/index.html. They are outputs, never sources.
 /doc/
 /Meta/
+
+# scratch: helper scripts and scheduler logs that are not part of the package
+Claude outputs/
+*.sbatch
+sf-*.log
+epyc-*.log
