@@ -1,0 +1,9 @@
+PKG_CFLAGS = $(SHLIB_OPENMP_CFLAGS)
+PKG_LIBS   = $(SHLIB_OPENMP_CFLAGS)
+
+# Note for developers: the five sf_kernels_<isa>.c files are thin wrappers that
+# #include sf_kernels.h, and make does not infer that prerequisite. After
+# editing sf_kernels.h, sf_simd.h or sf_math.h, rebuild with
+# `R CMD INSTALL --preclean`, or the stale objects will be relinked silently.
+# (An explicit dependency rule here would become make's default goal and
+# suppress the link step, so it is deliberately left out.)

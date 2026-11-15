@@ -1,0 +1,136 @@
+---
+title: "Getting started with simdfuse"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Getting started with simdfuse}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
+library(simdfuse)
+```
+
+## The problem
+
+R evaluates an array expression one operator at a time. Each operator reads its
+inputs from memory, allocates a fresh vector, writes the result, and hands it to
+the next operator. For
+
+```r
+a * b + sqrt(c) - 2.5
+```
+
+that is three temporary vectors of length `n` and four traversals of memory. The
+arithmetic itself is nearly free; what costs is moving data. Once the vectors are
+larger than the last-level cache, the expression runs at the speed of the memory
+bus, and the only way to go faster is to traverse less.
+
+`simdfuse` compiles the expression into a short instruction stream and evaluates
+it one cache-resident block at a time, so every intermediate value lives and dies
+in L1 cache:
+
+```{r}
+a <- runif(1e5); b <- runif(1e5); c <- runif(1e5)
+
+identical(sf(a * b + sqrt(c) - 2.5), a * b + sqrt(c) - 2.5)
+```
+
+Note `identical`, not `all.equal`. By default the result is bit-for-bit what base
+R produces; see `vignette("accuracy")` for exactly what that promise covers.
+
+## What you can write
+
+Anything built from the functions in `sf_supported()`, plus numeric literals and
+double, integer or logical vectors. Unsupported calls are a compile-time error
+with a message naming the offending function, never a silent fallback:
+
+```{r, error = TRUE}
+sf(quantile(a, 0.5) + 1)
+```
+
+## Reductions that allocate nothing
+
+The reduction forms never build a result vector at all. `sum((x - mu)^2)` in base
+R materialises two full-length temporaries; the fused form holds a few kilobytes
+whatever the length of `x`:
+
+```{r}
+x <- rnorm(1e5); mu <- mean(x)
+sf_sum(~ (x - mu)^2)
+```
+
+A Gaussian log-likelihood is the idiomatic case. Written out, it is five
+operations and a sum; fused, it is one pass and no allocation:
+
+```{r}
+s <- sd(x)
+sf_sum(~ -0.5 * log(2 * pi) - log(s) - 0.5 * ((x - mu) / s)^2)
+```
+
+The scalars here (`pi`, `s`, `mu`) are hoisted out of the loop automatically, so
+the two logarithms are evaluated once per call rather than once per element.
+`sf_compile()` shows what the engine actually does:
+
+```{r}
+sf_compile(~ -0.5 * log(2 * pi) - log(s) - 0.5 * ((x - mu) / s)^2,
+           scalars = c("pi", "s", "mu"))
+```
+
+For an expression evaluated many times -- inside an optimiser, a bootstrap, an
+MCMC step -- compile it once:
+
+```{r}
+nll <- sf_kernel(~ 0.5 * ((x - mu) / s)^2 + log(s), reduce = "sum")
+nll(x = x, mu = 0, s = 1)
+```
+
+## Skeletons
+
+Three parallel constructs that base R does not provide, each consuming an
+expression rather than a stored vector.
+
+A prefix scan under any associative operator, including a numerically stable
+log-domain one:
+
+```{r}
+lp <- c(800, 801, 802)       # exp(800) overflows a double
+sf_scan(~ lp, "logsumexp")
+log(cumsum(exp(lp)))         # the naive form gives up
+```
+
+A weighted stencil. `weights[1]` multiplies the earliest element of the window,
+so `c(-1/2, 0, 1/2)` reads as a centred first difference:
+
+```{r}
+y <- cumsum(rnorm(50))
+head(sf_stencil(~ y, c(-1/2, 0, 1/2), boundary = "replicate"), 4)
+```
+
+A reduction within contiguous runs, which is the shape of a sorted panel:
+
+```{r}
+value <- c(1, 2, 3, 10, 20, 100)
+firm  <- c(1, 1, 1,  2,  2,   3)
+sf_segreduce(~ value^2, firm, "sum")
+```
+
+Segments are *runs*, not groups: sort by the identifier first if the data are not
+already grouped. That restriction is what keeps the operation single-pass.
+
+## Checking what you are running on
+
+```{r}
+sf_info()
+```
+
+The engine builds one kernel per instruction set and picks among them at load
+time from the CPU's reported features. You can pin a narrower one, which is
+useful for reproducing results across machines with different hardware:
+
+```{r}
+old <- sf_options(isa = "sse2")$isa
+sf_info()$isa
+sf_options(isa = old)
+```

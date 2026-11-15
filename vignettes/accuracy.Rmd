@@ -1,0 +1,189 @@
+---
+title: "Accuracy, reproducibility and what is guaranteed"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Accuracy, reproducibility and what is guaranteed}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
+library(simdfuse)
+set.seed(20260114)
+ulp <- function(got, want) {
+  ok <- is.finite(want) & want != 0 & is.finite(got)
+  max(abs(got[ok] - want[ok]) / 2^(floor(log2(abs(want[ok]))) - 52))
+}
+```
+
+A faster answer that is quietly a different answer is not a faster answer. This
+page sets out exactly what `simdfuse` promises, what it does not, and where it
+deliberately disagrees with base R. The figures below are computed when this
+vignette is built, on your machine.
+
+## Elementwise arithmetic is bit-identical
+
+In the default `math = "accurate"` mode, every elementwise expression returns
+the same bits as base R. Elementary functions are routed through the same
+platform `libm` that R calls, one lane at a time; `pnorm`, `dnorm`, `plogis` and
+`qlogis` call R's own routines rather than being rebuilt from `erfc`.
+
+```{r}
+x <- runif(1e5, 0.1, 10); y <- runif(1e5, -5, 5); mu <- 2.5; s <- 1.25
+c(arith   = identical(sf(x * y + sqrt(x) - 2.5), x * y + sqrt(x) - 2.5),
+  expo    = identical(sf(exp(y)), exp(y)),
+  logs    = identical(sf(log(x, 2)), log(x, 2)),
+  powers  = identical(sf(x^3 - y^2), x^3 - y^2),
+  dist    = identical(sf(dnorm(y, mu, s)), dnorm(y, mu, s)),
+  ifelses = identical(sf(ifelse(x > y, x, y)), ifelse(x > y, x, y)))
+```
+
+Three details took real care and are worth knowing about:
+
+* **`x^k`.** R's arithmetic special-cases only `y == 2`, turning it into `x * x`,
+  and otherwise calls `pow()`. Replacing `x^3` with repeated squaring would be
+  faster and would differ in the last bit, so in accurate mode it is not done.
+* **Fused multiply-add.** Contracting `a*b + c` into one instruction removes a
+  rounding step. It is therefore emitted only in `fast` mode.
+* **`NA` versus `NaN`.** R distinguishes them by the payload bits of a quiet
+  `NaN`. Comparisons, the logical operators and `ifelse()` produce R's `NA`;
+  `pmin`/`pmax` propagate missingness by adding their operands, exactly as base
+  R does, so the payload survives.
+
+```{r}
+g <- expand.grid(a = c(1, 0, NA), b = c(1, 0, NA))
+p <- g$a; q <- g$b
+lp <- as.logical(p); lq <- as.logical(q)
+identical(sf(p & q), lp & lq) && identical(sf(p | q), lp | lq)
+```
+
+## The fast mode, and what it costs
+
+`math = "fast"` offers SIMD polynomial `exp()` and `log()` and allows
+multiply-add contraction. The error is bounded and measured, not hoped for:
+
+```{r}
+xe <- runif(2e5, -700, 700)
+xl <- 10^runif(2e5, -300, 300)
+c(exp_ulp = ulp(sf(exp(xe), math = "fast"), exp(xe)),
+  log_ulp = ulp(sf(log(xl), math = "fast"), log(xl)))
+```
+
+One to three units in the last place across the full representable range,
+subnormal inputs included. The boundary behaviour -- overflow to `Inf`,
+underflow to zero, `NaN` and the infinities -- is exact.
+
+The one deviation to know about: the polynomials destroy the payload that
+distinguishes `NA` from `NaN`, so `exp(NA)` returns `NaN` in fast mode.
+`is.na()` is `TRUE` either way, so only code that separates the two is affected.
+
+```{r}
+na <- c(NA_real_, 1)
+c(fast = is.nan(sf(exp(na), math = "fast"))[1],
+  accurate = is.nan(sf(exp(na), math = "accurate"))[1])
+```
+
+### Fast mode is not always faster, so it is not always taken
+
+A vectorised polynomial costs a fixed number of operations per vector no matter
+how wide that vector is, so it only pays for itself once there are enough lanes
+to spread the cost over. Below that it loses to the system `libm`, and the
+crossover is not a property of the lane count alone -- it also depends on how
+good the local `libm` is. Measured against glibc, the polynomial `log()` runs at
+0.54x of `libm` on the scalar backend, 0.74x on SSE2, 1.55x on AVX2 and 3.08x on
+AVX-512; measured against Apple's `libm` on two-lane NEON, polynomial `exp()`
+wins at 1.71x where polynomial `log()` loses at 0.80x. The same lane count, the
+same package, opposite answers.
+
+So the choice is per function and per machine, and it is measured rather than
+predicted. `sf_tune()` times both ways and sets `fast_exp` and `fast_log`
+accordingly; they can also be set by hand.
+
+```{r}
+unlist(sf_options()[c("fast_exp", "fast_log")])
+```
+
+When one of them is off, `math = "fast"` falls back to the same `libm` call
+`math = "accurate"` makes, which means fast mode is then *bit-identical to base
+R* for that function -- the `NA`-versus-`NaN` deviation above included. This is
+the one place where a `simdfuse` result depends on the host rather than only on
+the inputs, which is why it is reported rather than hidden:
+
+```{r}
+sf_info()[c("isa", "lanes")]
+```
+
+## Reductions: deterministic in the thread count
+
+A parallel sum normally depends on how the work was divided, so the same code
+gives different last bits on a laptop and on a cluster node. `simdfuse` cuts
+work into tasks whose boundaries depend only on `n`, never on the thread count,
+and combines task partials serially in index order in extended precision. The
+answer is therefore the same on one thread and on sixty:
+
+```{r}
+z <- rnorm(1e6) * 10^runif(1e6, -8, 8)   # a deliberately brutal summation
+vals <- vapply(1:4, function(k) sf_sum(quote(z), threads = k), 0)
+length(unique(vals)) == 1L
+```
+
+This is a stronger guarantee than `OpenMP`'s `reduction(+:)` clause can offer.
+What it is *not* is bit-identity with `sum()`: base R accumulates sequentially
+in long double, while this is blocked summation, which is usually the more
+accurate of the two but is a different operation.
+
+```{r}
+c(simdfuse = sf_sum(quote(z)), base = sum(z))
+```
+
+Determinism holds across thread counts at a fixed block size and instruction
+set. It does not hold across *different* block sizes or instruction sets, since
+both change how values are grouped before they are added. For results that must
+match across heterogeneous machines, pin both:
+
+```{r, eval = FALSE}
+sf_options(isa = "avx2", block = 128L)
+```
+
+## Where simdfuse deliberately disagrees with base R
+
+`x %% y` is computed in R as `x - floor(x/y) * y`, which carries no information
+once `|x/y|` exceeds `1/eps`; R notices and warns. `simdfuse` routes through
+`fmod()`, which is exact by definition.
+
+```{r}
+r_value  <- withCallingHandlers(1e300 %% 7,
+              warning = function(w) invokeRestart("muffleWarning"))
+v <- c(1e300, 1e300); sf_value <- sf(v %% 7)[1]
+
+digits <- as.numeric(strsplit(format(1e300, scientific = FALSE), "")[[1]])
+exact <- 0; for (d in digits) exact <- (exact * 10 + d) %% 7
+
+c(base_R = r_value, simdfuse = sf_value, exact = exact)
+```
+
+Below that threshold the two agree bit for bit. The same choice removes a
+subtler problem: computing the remainder the direct way made the AVX2 kernel
+disagree with the SSE2 kernel by one unit in the last place, because the
+compiler contracted the multiply-subtract on one and not the other. Answers
+that depend on which CPU you happen to be running on are a worse failure than
+answers that differ from base R for a documented reason, so every backend is
+checked against every other in the test suite.
+
+`sf_stencil()` also differs from `stats::filter()` by convention rather than by
+accident: `weights[1]` multiplies the earliest element of the window, so
+`c(-1/2, 0, 1/2)` is a centred first difference. `filter()` takes the weights
+in the reverse order.
+
+## Summary
+
+| | guarantee |
+|---|---|
+| elementwise, `math = "accurate"` | bit-identical to base R |
+| elementwise, `math = "fast"` | `exp` within 2 ulp, `log` within 4 ulp; `NA` becomes `NaN`. Per-function, and only where measurement showed the polynomial wins -- otherwise bit-identical to base R |
+| reductions | identical across thread counts; not bit-identical to `sum()` |
+| reductions across block size or instruction set | not guaranteed; pin both if it matters |
+| `sf_scan(parallel = FALSE)` | identical to `cumsum`, `cummax`, `cummin` |
+| `sf_scan(parallel = TRUE)` | identical for `max` and `min`; reassociated for `sum` and `prod` |
+| `%%`, `%/%` | identical where base R is reliable, exact beyond that |

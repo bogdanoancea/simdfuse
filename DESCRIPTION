@@ -1,0 +1,33 @@
+Package: simdfuse
+Type: Package
+Title: Fused SIMD Evaluation of Array Expressions and Parallel Skeletons
+Version: 0.1.0
+Authors@R: person("Bogdan", "Oancea", role = c("aut", "cre"),
+                  email = "bogdan.oancea@gmail.com")
+Description: Evaluates elementwise R expressions in a single pass over the
+    data, keeping every intermediate value inside a cache-resident block
+    instead of allocating a temporary vector per operation. Expressions are
+    compiled to a compact instruction stream and executed by a kernel that is
+    built once per instruction set (AVX-512, AVX2 with FMA, SSE2, NEON and a
+    scalar fallback) and selected at run time from the host's reported
+    features, so one binary vectorises on whatever hardware it finds.
+    Reductions are fused with the expression and therefore run in constant
+    auxiliary memory, and their parallel form is deterministic in the thread
+    count. Also provides parallel algorithmic skeletons for which base R has no
+    construct: an associative prefix scan (including a numerically stable
+    log-domain scan), a weighted stencil, and reduction within contiguous
+    segments, each consuming an expression rather than a materialised vector.
+    Elementary functions default to the platform library one lane at a time,
+    which reproduces base R bit for bit; an optional faster mode uses
+    vectorised polynomial approximations with documented, measured error.
+License: GPL-3
+Encoding: UTF-8
+Depends: R (>= 4.0.0)
+Suggests: testthat (>= 3.0.0), knitr, rmarkdown, microbenchmark
+VignetteBuilder: knitr
+NeedsCompilation: yes
+Biarch: true
+URL: https://github.com/bogdanoancea/simdfuse
+BugReports: https://github.com/bogdanoancea/simdfuse/issues
+Config/roxygen2/version: 8.1.1
+Roxygen: list(markdown = TRUE)

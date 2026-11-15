@@ -1,0 +1,32 @@
+# compiled objects and the shared library
+src/*.o
+src/*.so
+src/*.dll
+src/*.dylib
+
+# RStudio / R session state
+.Rproj.user/
+.Rhistory
+.RData
+.Ruserdata
+
+# build products that must not be committed: inst/doc and build/ in a dev tree
+# are what made `R CMD INSTALL` fail with a missing doc/index.html
+inst/doc/
+build/
+.build-artifacts/
+*.Rcheck/
+*.tar.gz
+
+# benchmark output: regenerate it, never commit it, since every number in it
+# is specific to the machine that produced it
+inst/benchmarks/*.csv
+
+# macOS directory metadata
+.DS_Store
+
+# vignette build output in a dev tree: `doc/` and `Meta/` are produced by
+# building vignettes in place, and their presence is what made R CMD INSTALL
+# fail looking for doc/index.html. They are outputs, never sources.
+/doc/
+/Meta/

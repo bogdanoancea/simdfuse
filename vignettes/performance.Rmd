@@ -1,0 +1,350 @@
+---
+title: "Measured performance (on your machine)"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Measured performance (on your machine)}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", echo = FALSE,
+                      fig.width = 7, fig.height = 4.4, dpi = 110)
+library(simdfuse)
+
+# Everything on this page is measured when the vignette is built. Nothing is
+# read from a stored results file, so the numbers below describe the machine
+# that built this document rather than the author's.
+bench_file <- system.file("benchmarks", "benchmarks.R", package = "simdfuse")
+if (!nzchar(bench_file)) bench_file <- "../inst/benchmarks/benchmarks.R"
+source(bench_file)
+
+# Size profile. "tiny" on CRAN, where a long-running vignette is unwelcome;
+# "quick" for an ordinary local build; override with
+#   SIMDFUSE_BENCH_SCALE=full R CMD build .
+on_cran <- !identical(Sys.getenv("NOT_CRAN"), "true")
+scale <- Sys.getenv("SIMDFUSE_BENCH_SCALE", if (on_cran) "tiny" else "quick")
+prof <- sf_bench_profile(scale)
+
+set.seed(20260114)
+elapsed <- system.time(res <- sf_bench_all(prof))[["elapsed"]]
+si <- sf_bench_sysinfo()
+
+# Measurement spread, used to say when a comparison is inside the noise.
+spr <- function(bench, case, engine) {
+  s <- res[res$bench == bench & res$case == case & res$engine == engine, ]
+  if (nrow(s)) s$spread[1] else NA_real_
+}
+noisy <- function(...) isTRUE(spr(...) > 0.15)
+
+sec <- function(bench, case, engine) {
+  s <- res[res$bench == bench & res$case == case & res$engine == engine, ]
+  if (nrow(s)) s$seconds[1] else NA_real_
+}
+ms  <- function(...) { v <- sec(...); if (is.na(v)) "--" else sprintf("%.1f", v * 1e3) }
+sp  <- function(bench, case, num, den) {
+  v <- sec(bench, case, num) / sec(bench, case, den)
+  if (is.na(v)) NA_real_ else round(v, 2)
+}
+spx <- function(...) { v <- sp(...); if (is.na(v)) "--" else sprintf("%.2fx", v) }
+fmt_n <- function(n) format(n, big.mark = ",", scientific = FALSE)
+pal <- c("#1b6ca8", "#d1495b", "#66a182", "#edae49", "#2e4057")
+mar <- function() par(mar = c(4.2, 4.4, 1.2, 1), las = 1, bty = "l",
+                      mgp = c(2.6, 0.6, 0))
+
+fus <- subset(res, bench == "fusion")
+ops <- c("1 op", "2 ops", "4 ops", "8 ops", "16 ops"); opn <- c(1, 2, 4, 8, 16)
+ns <- sort(unique(fus$n)); nmax <- max(ns)
+sp_at <- function(nn, o) {
+  s <- fus[fus$n == nn, ]
+  s$seconds[s$case == o & s$engine == "base R"] /
+    s$seconds[s$case == o & s$engine == "simdfuse"]
+}
+sp_big <- vapply(ops, function(o) sp_at(nmax, o), 0)
+cross <- opn[which(sp_big >= 1)]
+cross <- if (length(cross)) min(cross) else NA
+```
+
+A word on reading the numbers. Each measurement is the fastest of several
+timed batches, and the spread across those batches is recorded alongside it.
+On a shared or thermally throttled machine -- any laptop, and anything with
+asymmetric cores -- repeated threaded measurements of the same expression can
+differ by a quarter, which is larger than several of the effects compared here.
+Where that happens the table below says so; treat those rows as indicative and
+re-run before drawing a conclusion from them.
+
+Every figure and number on this page was measured while this vignette was
+being built, by the functions in `inst/benchmarks/benchmarks.R`. Nothing is
+read from a stored results file. What follows therefore describes **your**
+machine, and the same document built elsewhere will say something different.
+
+```{r sysinfo, results = "asis"}
+cat(sprintf(
+"| | |\n|---|---|\n| platform | %s |\n| R | %s |\n| instruction set in use | %s (%d lanes per register) |\n| backends available | %s |\n| cores | %s physical, %s logical |\n| OpenMP | %s, %d threads offered |\n%s%s| size profile | `%s` (n up to %s), %.0f s to measure |\n",
+  si$platform, si$r_version, si$isa, si$lanes, si$available,
+  ifelse(is.na(si$cores), "?", si$cores), ifelse(is.na(si$logical), "?", si$logical),
+  if (isTRUE(si$openmp)) "yes" else "no", si$max_threads,
+  if (!is.na(si$cache)) sprintf("| cache | %s |\n", si$cache) else "",
+  if (!is.na(si$omp_env)) sprintf("| thread limits in the environment | `%s` |\n", si$omp_env) else "",
+  prof$scale, fmt_n(max(prof$n_thread, nmax)), elapsed))
+```
+
+`r if (scale != "full") sprintf("The timings here use the **%s** profile, which keeps vector lengths modest so that building this vignette stays quick. The full profile uses vectors of %s elements, where the effects below are larger because the data no longer fits in any cache. To reproduce the author's numbers, run <code>Rscript inst/benchmarks/bench-run.R</code>.", scale, fmt_n(1e7)) else "This is the full profile."`
+
+## Fusion
+
+Base R evaluates an array expression one operator at a time, allocating and
+traversing a vector per operator. simdfuse compiles the expression and makes a
+single pass, keeping intermediates in cache. What is being removed is therefore
+*traversals of memory*, and the benefit should grow both with the number of
+operators and with `n`.
+
+```{r fig-fusion, fig.height = 4.2}
+mar()
+plot(NA, xlim = c(1, 16), ylim = range(0.5, unlist(lapply(ns, function(nn)
+       vapply(ops, function(o) sp_at(nn, o), 0))) * 1.12),
+     log = "x", xaxt = "n", xlab = "arithmetic operations in the expression",
+     ylab = "speedup over base R (x)")
+axis(1, at = opn, labels = opn)
+abline(h = 1, col = "grey60", lty = 2)
+for (i in seq_along(ns))
+  lines(opn, vapply(ops, function(o) sp_at(ns[i], o), 0), col = pal[i],
+        lwd = 2.4, type = "b", pch = 19, cex = 0.9)
+legend("topleft", sprintf("n = %s", fmt_n(ns)), col = pal[seq_along(ns)],
+       lwd = 2.4, pch = 19, bty = "n", cex = 0.85)
+```
+
+At the largest length measured here, n = `r fmt_n(nmax)`, the sixteen-operator
+expression ran **`r sprintf("%.2fx", sp_big[["16 ops"]])`** and the
+eight-operator one **`r sprintf("%.2fx", sp_big[["8 ops"]])`**. The single
+operator case ran `r sprintf("%.2fx", sp_big[["1 op"]])`, that is
+`r if (sp_big[["1 op"]] >= 1) "still faster" else "**slower** than base R"`.
+
+`r if (is.na(cross)) "On this machine no expression depth measured here came out ahead, which is worth knowing before you adopt the package." else if (cross == 1) "Every depth measured came out ahead on this machine." else sprintf("The crossover is at **%d operators**: below that there is no temporary worth eliminating and only the interpreter's own overhead remains. If your expressions are single operations, this package has nothing to offer you.", cross)`
+
+## Elementary functions
+
+Base R calls the platform `libm` once per element for `exp()` and `log()`, and
+no auto-vectoriser can change that because it cannot see inside the library
+call. The default `math = "accurate"` mode makes the same calls, so it is
+expected to sit near parity; `math = "fast"` substitutes SIMD polynomials.
+
+```{r tab-mathfun, results = "asis"}
+cat("| expression | base R | accurate | fast | fast speedup |\n|---|---|---|---|---|\n")
+for (l in c("exp(x)", "log(x)", "sqrt(x)", "gaussian loglik"))
+  cat(sprintf("| `%s` | %s ms | %s ms | %s ms | %s |\n", l,
+      ms("mathfun", l, "base R"), ms("mathfun", l, "simdfuse accurate"),
+      ms("mathfun", l, "simdfuse fast"),
+      spx("mathfun", l, "base R", "simdfuse fast")))
+```
+
+```{r mathfun-prose, results = "asis"}
+labs <- c("exp(x)", "log(x)", "sqrt(x)", "gaussian loglik")
+slow <- labs[vapply(labs, function(l)
+  isTRUE(sec("mathfun", l, "simdfuse accurate") > sec("mathfun", l, "base R") * 1.05), TRUE)]
+if (length(slow))
+  cat(sprintf("At this scale the accurate mode came out *slower* than base R on %s. The block interpreter has a fixed per-call and per-block cost, and it only pays for itself once an expression has several operators or the data stops fitting in cache -- see the crossover above. The fast column is a different trade: it buys speed with a documented 1-4 ulp error, which `vignette(\"accuracy\")` quantifies.\n",
+      paste(sprintf("`%s`", slow), collapse = ", ")))
+```
+
+The sweep below is the measurement that separates the SIMD contribution from
+the fusion contribution: identical work, identical data, one backend per bar.
+
+```{r fig-isa, fig.height = 3.6}
+ord <- c("scalar", "sse2", "avx2", "avx512", "neon")
+e <- subset(res, bench == "isa_exp")
+e <- e[order(match(e$case, ord)), ]
+mar()
+bp <- barplot(e$seconds * 1e3, names.arg = e$case, col = pal[1], border = NA,
+              ylab = sprintf("ms for exp(), n = %s", fmt_n(e$n[1])),
+              ylim = c(0, max(e$seconds * 1e3) * 1.22))
+text(bp, e$seconds * 1e3, sprintf("%.1f", e$seconds * 1e3), pos = 3, cex = 0.8)
+if (nrow(e) > 1)
+  text(bp, e$seconds * 1e3 / 2, sprintf("%.2fx", e$seconds[1] / e$seconds),
+       col = "white", font = 2, cex = 0.9)
+```
+
+```{r isa-prose, results = "asis"}
+if (nrow(e) > 1) {
+  r <- e$seconds[1] / e$seconds[nrow(e)]
+  verdict <- if (r < si$lanes * 0.9)
+    "The shortfall against that ideal is memory traffic, which no amount of arithmetic width removes."
+  else if (r > si$lanes * 1.1)
+    "It exceeds the lane ratio, which happens because the narrow backends pay more per-element loop overhead as well as doing narrower arithmetic."
+  else "That is close to the ideal."
+  cat(sprintf("Scalar to %s is a factor of **%.2f** on this CPU, against a lane ratio of %d. %s For plain `+` and `*` the same sweep is far flatter, because R's own loops already auto-vectorise and the expression is bandwidth-bound: the SIMD layer earns its keep on the transcendentals.\n",
+      e$case[nrow(e)], r, si$lanes, verdict))
+} else {
+  cat("Only one backend is available on this CPU, so there is nothing to compare.\n")
+}
+```
+
+## Reductions
+
+A reduction is fused into the expression and never allocates a result vector,
+so `sum((x - mu)^2)` runs in constant auxiliary memory whatever the length of
+`x`.
+
+```{r fig-reduce, fig.height = 4.2}
+rr <- subset(res, bench == "reduce"); cs <- unique(rr$case)
+eng <- c("base R", "simdfuse 1 thread", "simdfuse all threads")
+m <- sapply(cs, function(c0) vapply(eng, function(en) sec("reduce", c0, en), 0)) * 1e3
+mar(); par(mar = c(5.4, 4.4, 1.2, 1))
+bp <- barplot(m, beside = TRUE, col = pal[1:3], border = NA, names.arg = cs,
+              ylab = sprintf("ms, n = %s", fmt_n(rr$n[1])), las = 2,
+              ylim = c(0, max(m, na.rm = TRUE) * 1.24), cex.names = 0.72)
+legend("topright", eng, fill = pal[1:3], border = NA, bty = "n", cex = 0.78)
+for (j in seq_len(ncol(m)))
+  text(bp[2:3, j], m[2:3, j], sprintf("%.1fx", m[1, j] / m[2:3, j]), pos = 3, cex = 0.66)
+```
+
+```{r reduce-prose, results = "asis"}
+best <- cs[which.max(vapply(cs, function(c0)
+  sec("reduce", c0, "base R") / sec("reduce", c0, "simdfuse 1 thread"), 0))]
+cat(sprintf("`%s` gained most (%s on one thread): base R builds and discards a full vector to produce one number. `sum(x)` gains least (%s), because there is no temporary to remove, only the summation itself",
+    best, spx("reduce", best, "base R", "simdfuse 1 thread"),
+    spx("reduce", "sum(x)", "base R", "simdfuse 1 thread")))
+if (!is.na(sec("reduce", "sum(x)", "collapse::fsum")))
+  cat(sprintf(" -- and `collapse::fsum` takes %s ms against our %s ms",
+      ms("reduce", "sum(x)", "collapse::fsum"),
+      ms("reduce", "sum(x)", "simdfuse all threads")))
+cat(".\n\n")
+mb <- sec("memory", "sum((x-mu)^2+sqrt(x))", "base R")
+msf <- sec("memory", "sum((x-mu)^2+sqrt(x))", "simdfuse")
+cat(sprintf("Peak memory for `sum((x - mu)^2 + sqrt(x))` at n = %s: **%.0f MiB** for base R against **%.0f MiB** fused. Both include the %.0f MiB input itself, which neither approach avoids; the difference is the temporaries.\n",
+    fmt_n(prof$n), mb, msf, prof$n * 8 / 2^20))
+```
+
+## Skeletons
+
+```{r tab-skel, results = "asis"}
+cat("| operation | alternative | simdfuse | speedup |\n|---|---|---|---|\n")
+rows <- list(
+  list("5-point stencil", "stencil", "5-point mean", "stats::filter"),
+  list("5-point stencil", "stencil", "5-point mean", "data.table::frollmean"),
+  list("sum by group",    "segreduce", "sum by group", "base rowsum"),
+  list("sum by group",    "segreduce", "sum by group", "collapse::fsum"),
+  list("cumsum(log(x))",  "scan", "cumsum(log(x))", "base R"),
+  list("cumsum(x)",       "scan", "cumsum", "base R"))
+for (w in rows) {
+  alt <- sec(w[[2]], w[[3]], w[[4]])
+  if (is.na(alt)) next
+  mine <- if (w[[3]] == "cumsum") sec("scan", "cumsum", "simdfuse parallel")
+          else sec(w[[2]], w[[3]], "simdfuse")
+  flag <- if (noisy(w[[2]], w[[3]], "simdfuse") ||
+              noisy(w[[2]], w[[3]], w[[4]])) " (noisy)" else ""
+  cat(sprintf("| %s | `%s` %.1f ms | %.1f ms | %.2fx%s |\n", w[[1]], w[[4]],
+              alt * 1e3, mine * 1e3, alt / mine, flag))
+}
+```
+
+The grouped sum is not quite like for like: `rowsum` and `collapse::fsum`
+accept groups in any order, while `sf_segreduce()` needs contiguous runs. On an
+already-sorted panel that restriction is free; otherwise the sort dominates and
+`collapse` is the better tool.
+
+```{r scan-prose, results = "asis"}
+s_par <- sp("scan", "cumsum", "base R", "simdfuse parallel")
+s_log <- sp("scan", "cumsum(log(x))", "base R", "simdfuse")
+cat(sprintf("The plain scan is the honest weak spot: `cumsum(x)` came out at %.2fx%s. A scan is memory-bound and the parallel form reads the data twice. Fusing a transformation into it recovers %.1f times that, with `cumsum(log(x))` at %.2fx, %s\n",
+    s_par, if (s_par < 1) ", slower than base R" else "",
+    s_log / s_par, s_log,
+    if (s_log >= 1)
+      "so the scan is worth using when there is an expression to fuse into it, and not otherwise."
+    else
+      "which on this machine is still short of base R: at this scale neither form of the scan is a reason to use the package. On the author's full-profile run the fused form did come out ahead."))
+```
+
+## Thread scaling
+
+```{r fig-threads, fig.height = 3.6}
+th <- subset(res, bench == "threads" & engine == "simdfuse")
+th$k <- as.integer(th$case); th <- th[order(th$k), ]
+base_t <- sec("threads", "base R", "base R")
+mar()
+if (nrow(th) > 1) {
+  plot(th$k, th$seconds[1] / th$seconds, type = "b", pch = 19, lwd = 2.4,
+       col = pal[1], xlab = "threads", ylab = "speedup over 1 thread (x)",
+       xaxt = "n", ylim = c(0.9, max(2, th$seconds[1] / min(th$seconds)) * 1.1))
+  axis(1, at = th$k)
+  abline(0, 1, col = "grey70", lty = 3)
+  legend("topleft", c("measured", "perfect scaling"), col = c(pal[1], "grey70"),
+         lwd = c(2.4, 1), lty = c(1, 3), pch = c(19, NA), bty = "n", cex = 0.85)
+} else {
+  plot.new(); text(0.5, 0.5, "only one thread available", cex = 1.1)
+}
+```
+
+```{r thread-prose, results = "asis"}
+if (nrow(th) > 1) {
+  cat(sprintf("%.1f ms on one thread against %.1f ms on %d, a speedup of **%.2fx**; base R takes %.1f ms. This expression is bandwidth-bound, so it stops scaling well before the core count runs out -- do not read these numbers as a core-count law. Two further caveats: on a machine with asymmetric cores (Apple Silicon, Intel hybrid) OpenMP counts the efficiency cores too, and threads landing on them flatten the curve; and the sweep is capped at %d here%s.\n",
+      th$seconds[1] * 1e3, min(th$seconds) * 1e3, th$k[which.min(th$seconds)],
+      th$seconds[1] / min(th$seconds), base_t * 1e3, max(th$k),
+      if (nzchar(Sys.getenv("_R_CHECK_LIMIT_CORES_")))
+        ", which is R CMD check restricting cores rather than your hardware -- build the vignette outside check to see the whole curve"
+      else if (!is.na(prof$thread_cap) && max(th$k) >= prof$thread_cap)
+        sprintf(" by the `%s` size profile, not by your hardware", prof$scale)
+      else " by what OpenMP reports"))
+  if (!is.na(si$cores) && si$max_threads < si$cores) {
+    cat(sprintf("\n**OpenMP is offering %d thread%s on a machine with %d physical cores**, so the sweep above is not measuring this hardware. %sBuild the vignette outside `R CMD check` -- `devtools::build_vignettes()`, or knit `vignettes/performance.Rmd` directly -- to see the real curve.\n",
+        si$max_threads, if (si$max_threads == 1) "" else "s", si$cores,
+        if (!is.na(si$omp_env))
+          sprintf("The environment holds `%s`, which is where the limit comes from. ", si$omp_env)
+        else if (isTRUE(si$under_check))
+          "This looks like an `R CMD check` run, which restricts cores. "
+        else ""))
+  }
+} else {
+  cat("Threading could not be measured here.\n")
+}
+```
+
+## Choosing the block size
+
+The block is how many elements are processed per pass, and so how much of the
+working set stays in L1. The package default is 128 doubles, one kibibyte per
+register.
+
+```{r fig-block, fig.height = 4}
+b <- subset(res, bench == "block")
+b$block <- as.integer(b$engine); cs <- unique(b$case)
+rel <- lapply(cs, function(c0) { s <- b[b$case == c0, ]; s$seconds / min(s$seconds) })
+mar()
+plot(NA, xlim = range(b$block), ylim = c(0.95, max(unlist(rel)) * 1.05), log = "x",
+     xlab = "block size (doubles per register)",
+     ylab = "time relative to the best for that expression")
+for (i in seq_along(cs)) {
+  s <- b[b$case == cs[i], ]
+  lines(s$block, s$seconds / min(s$seconds), col = pal[i], lwd = 2.2,
+        type = "b", pch = 19, cex = 0.8)
+}
+abline(v = 128, col = "grey45", lty = 3)
+legend("topleft", cs, col = pal[seq_along(cs)], lwd = 2.2, pch = 19, bty = "n",
+       cex = 0.82)
+```
+
+```{r block-prose, results = "asis"}
+bestb <- vapply(cs, function(c0) { s <- b[b$case == c0, ]; s$block[which.min(s$seconds)] }, 0)
+cost128 <- vapply(cs, function(c0) {
+  s <- b[b$case == c0, ]
+  if (any(s$block == 128L)) 100 * (s$seconds[s$block == 128L] / min(s$seconds) - 1) else NA
+}, 0)
+cat(sprintf("On this machine the best block was %s, and the default of 128 cost %s relative to the best for each expression.\n\n",
+    paste(sprintf("%d (%s)", bestb, cs), collapse = ", "),
+    paste(sprintf("%+.0f%%", cost128), collapse = ", ")))
+cat("The curve is usually not monotone, which is worth noticing: particular block sizes place the registers at strides that collide in a set-associative L1, and the penalty appears and disappears again as the size grows. The optimum is also strongly machine-specific -- measured best values have ranged from 64 doubles on an Intel Xeon to 2048 on an Apple M-series -- so rather than reasoning about it, run `sf_tune()` once on this machine and put the answer in your `.Rprofile`.\n")
+```
+
+## Reproducing and extending this
+
+```{r repro, echo = TRUE, eval = FALSE}
+# the same functions this vignette just ran
+source(system.file("benchmarks", "benchmarks.R", package = "simdfuse"))
+res <- sf_bench_all(sf_bench_profile("quick"), verbose = TRUE)
+
+# the author's full-scale run, several minutes and a few GB of memory
+# Rscript inst/benchmarks/bench-run.R
+```
+
+Build this vignette at a different scale with the `SIMDFUSE_BENCH_SCALE`
+environment variable, set to `tiny`, `quick` or `full`.
