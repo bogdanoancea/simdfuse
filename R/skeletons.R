@@ -61,7 +61,7 @@ sf_scan <- function(expr, op = c("sum", "prod", "max", "min", "logsumexp"),
   if (identical(parallel, TRUE) && thr == 1L) thr <- 0L
   out <- .Call(C_sf_scan, prog$code, prog$consts, inp$vars, as.double(inp$n),
                prog$nreg, prog$nprologue,
-               .sf_block_for("none", block, prog$nreg),
+               as.integer(block %||% getOption("simdfuse.block")),
                .sf_fast_mask(prog$fast), .sf_scan_ops[[op]], thr)
   .sf_restore_attrs(out, inp$proto)
 }
@@ -138,7 +138,7 @@ sf_stencil <- function(expr, weights,
   bnd <- .sf_boundaries[[if (boundary == "NA") "NA_" else boundary]]
   out <- .Call(C_sf_stencil, prog$code, prog$consts, inp$vars,
                as.double(inp$n), prog$nreg, prog$nprologue,
-               .sf_block_for("none", block, prog$nreg),
+               as.integer(block %||% getOption("simdfuse.block")),
                .sf_fast_mask(prog$fast), weights, bnd,
                as.integer(threads %||% getOption("simdfuse.threads")))
   .sf_restore_attrs(out, inp$proto)
@@ -209,7 +209,7 @@ sf_segreduce <- function(expr, by,
                  length(by), inp$n), call. = FALSE)
   res <- .Call(C_sf_segreduce, prog$code, prog$consts, inp$vars,
                as.double(inp$n), prog$nreg, prog$nprologue,
-               .sf_block_for("none", block, prog$nreg),
+               as.integer(block %||% getOption("simdfuse.block")),
                .sf_fast_mask(prog$fast), by, .sf_redcode(reduce), isTRUE(na.rm),
                as.integer(threads %||% getOption("simdfuse.threads")))
   out <- data.frame(id = res$id, value = res$value, length = res$length)
