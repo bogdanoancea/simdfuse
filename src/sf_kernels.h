@@ -33,6 +33,7 @@
  * scalar kernel, because clang unrolls the plain C loop and we did not. */
 #define SF_STEP 8
 
+
 #define SF_BIN(VOP) do { \
     const double *a_ = ra, *b_ = rb; double *d_ = rd; \
     int j = 0; \
@@ -344,6 +345,15 @@ SF_TARGET void SF_NAME(sf_reduce_block)(const double *v, int blen, int red,
   switch (red) {
   case SF_RED_SUM:
   case SF_RED_MEAN: {
+    /* One accumulator, deliberately. Splitting this into four independent
+     * chains was tried and measured: it is a 0.81x-0.87x regression on
+     * AVX-512. The chains themselves are roughly free (0.99x), but making
+     * them correct is not -- reordering the additions breaks base R's
+     * index-order NA/NaN propagation, and the per-vector scan needed to
+     * detect a block that must fall back costs 0.69x-0.89x on its own. The
+     * single chain may well be latency-bound on a narrow vector unit with
+     * memory bandwidth to spare, but the fix for that has to be cheaper than
+     * this one before it is worth having. */
     sfv acc = V_ZERO(), cnt = V_ZERO();
     for (int j = 0; j < vlen; j += SF_W) {
       sfv x = V_LOAD(v + j);
