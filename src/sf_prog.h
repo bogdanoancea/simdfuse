@@ -51,6 +51,13 @@ void sf_prog_prologue(const sf_prog *P, double *regs);
 /* Execute the program over [start, start+blen) into a thread's register file. */
 void sf_prog_block(const sf_prog *P, double *regs, R_xlen_t start, int blen);
 
+/* As sf_prog_block, but the final result of the block is written straight into
+ * dest when the block needs no padding, saving the caller's copy. Returns 1 if
+ * it did so, 0 if the caller must still copy out of sf_prog_final(). */
+void sf_prog_block_to(const sf_prog *P, double *regs, R_xlen_t start, int blen,
+                      double *dest);
+int  sf_prog_dest_used(const sf_prog *P, int blen);
+
 /* Reduce a finished block; see sf_kernels.h for the out[] contract. */
 void sf_prog_reduce(const double *v, int blen, int red, int na_rm, double *out);
 

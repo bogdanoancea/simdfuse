@@ -73,10 +73,15 @@ SEXP C_sf_eval(SEXP s_code, SEXP s_consts, SEXP s_vars, SEXP s_n, SEXP s_nreg,
 
         for (R_xlen_t s = lo; s < hi; s += P.B) {
           const int blen = (int)((hi - s < P.B) ? (hi - s) : P.B);
-          sf_prog_block(&P, regs, s, blen);
           if (red == SF_RED_NONE) {
-            memcpy(outp + s, fin, (size_t)blen * sizeof(double));
+            /* Hand the kernel the output slot. For a block that is a whole
+             * number of lanes it writes the result there directly and this
+             * copy is skipped; only the ragged last block still needs it. */
+            sf_prog_block_to(&P, regs, s, blen, outp + s);
+            if (!sf_prog_dest_used(&P, blen))
+              memcpy(outp + s, fin, (size_t)blen * sizeof(double));
           } else {
+            sf_prog_block(&P, regs, s, blen);
             sf_prog_reduce(fin, blen, red, na_rm, blk);
             sf_acc_push(&A, red, blk);
           }

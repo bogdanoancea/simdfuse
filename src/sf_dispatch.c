@@ -16,14 +16,14 @@
 
 typedef void (*sf_exec_fn)(const int*, int, const double*, const void *const*,
                            const int*, const int*, R_xlen_t, int, double*,
-                           int, int, int);
+                           int, int, int, double*, int);
 typedef void (*sf_reduce_fn)(const double*, int, int, int, double*);
 typedef void (*sf_stencil_fn)(const double*, R_xlen_t, const double*, int, double*);
 
 #define SF_DECL(suf) \
   extern void sf_exec_block_##suf(const int*, int, const double*, \
       const void *const*, const int*, const int*, R_xlen_t, int, double*, \
-      int, int, int); \
+      int, int, int, double*, int); \
   extern void sf_reduce_block_##suf(const double*, int, int, int, double*); \
   extern void sf_stencil_apply_##suf(const double*, R_xlen_t, const double*, int, double*);
 
@@ -195,15 +195,37 @@ void sf_prog_prologue(const sf_prog *P, double *regs) {
   /* Run at full block width so every lane of the invariant registers is set,
    * whatever length the final block turns out to be. */
   g_exec(P->code, P->nprologue, P->consts, P->vars, P->vscal, P->vtype, 0,
-         P->B, regs, P->nreg, P->B, P->fast);
+         P->B, regs, P->nreg, P->B, P->fast, NULL, -1);
 }
 
-void sf_prog_block(const sf_prog *P, double *regs, R_xlen_t start, int blen) {
+/* dest, when not NULL, is where the final result of this block should land.
+ * The kernel writes the last instruction straight into it and the caller skips
+ * its copy, but only for a block that needs no padding -- see sf_kernels.h.
+ * sf_prog_wrote_dest says whether that happened. */
+void sf_prog_block_to(const sf_prog *P, double *regs, R_xlen_t start, int blen,
+                      double *dest) {
   const int n = P->ncode - P->nprologue;
   if (n <= 0) return;      /* wholly invariant expression: prologue did it all */
   g_exec(P->code + (size_t)P->nprologue * SF_INSTR_WIDTH, n, P->consts,
          P->vars, P->vscal, P->vtype, start, blen, regs, P->nreg, P->B,
-         P->fast);
+         P->fast, dest, P->final_reg);
+  /* final_reg goes through whether or not dest does: the kernel needs it to
+     know which register it must not leave aliased. */
+}
+
+void sf_prog_block(const sf_prog *P, double *regs, R_xlen_t start, int blen) {
+  sf_prog_block_to(P, regs, start, blen, NULL);
+}
+
+/* Whether a block of this length will have been written to dest. Mirrors the
+ * kernel's own condition: only a block that is already a whole number of lanes
+ * can be written in place, because anything else would round up past the end
+ * of the output. The lane count depends on the dispatched kernel, so ask the
+ * dispatcher rather than assuming. */
+int sf_prog_dest_used(const sf_prog *P, int blen) {
+  const int w = sf_isa_lanes();
+  if (P->ncode - P->nprologue <= 0) return 0;
+  return blen == ((blen + w - 1) / w) * w;
 }
 
 void sf_prog_reduce(const double *v, int blen, int red, int na_rm, double *out) {

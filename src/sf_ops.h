@@ -45,6 +45,11 @@ enum {
 /* How an input vector is stored. R's logical and integer vectors are both
  * int arrays and share NA_INTEGER == INT_MIN as their missing value, so they
  * convert identically and need no separate code. */
+/* Upper bound on registers in one program, so the kernel's pointer table can
+ * live on the stack. The compiler's use-counted allocator keeps the real
+ * number small -- a seventeen-instruction log-likelihood uses six. */
+#define SF_MAXREG 256
+
 #define SF_VT_DBL 0
 #define SF_VT_INT 1
 
