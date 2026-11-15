@@ -42,6 +42,12 @@ enum {
  * two-lane NEON exp() beat Apple's libm by 1.7x while a two-lane SSE2 exp()
  * lost to glibc by 0.9x, so the choice has to be made per function and per
  * machine. sf_tune() measures it. */
+/* How an input vector is stored. R's logical and integer vectors are both
+ * int arrays and share NA_INTEGER == INT_MIN as their missing value, so they
+ * convert identically and need no separate code. */
+#define SF_VT_DBL 0
+#define SF_VT_INT 1
+
 #define SF_FAST_EXP 1
 #define SF_FAST_LOG 2
 

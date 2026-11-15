@@ -22,7 +22,12 @@ typedef struct {
   int ncode;
   const double *consts;
   int nconst;
-  const double *const *vars;
+  /* Inputs are not coerced to double before evaluation: an integer or
+   * logical vector is read in its own storage and converted during the block
+   * load, which was already copying into a register anyway. So the pointers
+   * are untyped and vtype says how to read each one. */
+  const void *const *vars;
+  const int *vtype;             /* SF_VT_DBL or SF_VT_INT, per input */
   const int *vscal;
   int nvar;
   int nreg;

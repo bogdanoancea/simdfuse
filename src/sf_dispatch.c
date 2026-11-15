@@ -14,14 +14,16 @@
 #include "sf_prog.h"
 
 
-typedef void (*sf_exec_fn)(const int*, int, const double*, const double *const*,
-                           const int*, R_xlen_t, int, double*, int, int, int);
+typedef void (*sf_exec_fn)(const int*, int, const double*, const void *const*,
+                           const int*, const int*, R_xlen_t, int, double*,
+                           int, int, int);
 typedef void (*sf_reduce_fn)(const double*, int, int, int, double*);
 typedef void (*sf_stencil_fn)(const double*, R_xlen_t, const double*, int, double*);
 
 #define SF_DECL(suf) \
   extern void sf_exec_block_##suf(const int*, int, const double*, \
-      const double *const*, const int*, R_xlen_t, int, double*, int, int, int); \
+      const void *const*, const int*, const int*, R_xlen_t, int, double*, \
+      int, int, int); \
   extern void sf_reduce_block_##suf(const double*, int, int, int, double*); \
   extern void sf_stencil_apply_##suf(const double*, R_xlen_t, const double*, int, double*);
 
@@ -165,13 +167,19 @@ void sf_prog_init(sf_prog *P, SEXP s_code, SEXP s_consts, SEXP s_vars,
   P->final_reg = P->code[(size_t)(P->ncode - 1) * SF_INSTR_WIDTH + 4];
 
   const int nv = P->nvar > 0 ? P->nvar : 1;
-  const double **vars = (const double **)R_alloc((size_t)nv, sizeof(double *));
+  const void **vars = (const void **)R_alloc((size_t)nv, sizeof(void *));
   int *vscal = (int *)R_alloc((size_t)nv, sizeof(int));
+  int *vtype = (int *)R_alloc((size_t)nv, sizeof(int));
   for (int i = 0; i < P->nvar; i++) {
     SEXP v = VECTOR_ELT(s_vars, i);
-    if (TYPEOF(v) != REALSXP)
-      Rf_error("simdfuse: input %d is not a double vector (internal error)", i + 1);
-    vars[i] = REAL_RO(v);
+    switch (TYPEOF(v)) {
+    case REALSXP: vtype[i] = SF_VT_DBL; vars[i] = REAL_RO(v);    break;
+    case INTSXP:
+    case LGLSXP:  vtype[i] = SF_VT_INT; vars[i] = INTEGER_RO(v); break;
+    default:
+      Rf_error("simdfuse: input %d is not a double, integer or logical vector "
+               "(internal error)", i + 1);
+    }
     vscal[i] = (XLENGTH(v) == 1) ? 1 : 0;
     if (!vscal[i] && XLENGTH(v) != P->n)
       Rf_error("simdfuse: input %d has length %lld but the expression is length %lld",
@@ -179,21 +187,23 @@ void sf_prog_init(sf_prog *P, SEXP s_code, SEXP s_consts, SEXP s_vars,
   }
   P->vars = vars;
   P->vscal = vscal;
+  P->vtype = vtype;
 }
 
 void sf_prog_prologue(const sf_prog *P, double *regs) {
   if (P->nprologue <= 0) return;
   /* Run at full block width so every lane of the invariant registers is set,
    * whatever length the final block turns out to be. */
-  g_exec(P->code, P->nprologue, P->consts, P->vars, P->vscal, 0, P->B,
-         regs, P->nreg, P->B, P->fast);
+  g_exec(P->code, P->nprologue, P->consts, P->vars, P->vscal, P->vtype, 0,
+         P->B, regs, P->nreg, P->B, P->fast);
 }
 
 void sf_prog_block(const sf_prog *P, double *regs, R_xlen_t start, int blen) {
   const int n = P->ncode - P->nprologue;
   if (n <= 0) return;      /* wholly invariant expression: prologue did it all */
   g_exec(P->code + (size_t)P->nprologue * SF_INSTR_WIDTH, n, P->consts,
-         P->vars, P->vscal, start, blen, regs, P->nreg, P->B, P->fast);
+         P->vars, P->vscal, P->vtype, start, blen, regs, P->nreg, P->B,
+         P->fast);
 }
 
 void sf_prog_reduce(const double *v, int blen, int red, int na_rm, double *out) {

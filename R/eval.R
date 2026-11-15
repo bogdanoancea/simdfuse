@@ -60,12 +60,10 @@
     if (is.factor(v))
       stop(sprintf("simdfuse: `%s` is a factor; convert it explicitly", nm),
            call. = FALSE)
-    if (is.logical(v) || is.integer(v)) {
-      keep <- attributes(v)
-      v <- as.double(v)
-      attributes(v) <- keep
-    }
-    if (!is.double(v))
+    # Integer and logical vectors are passed through in their own storage.
+    # The block loader converts them as it copies into a register, so there is
+    # no second vector the size of the input and no extra pass over it.
+    if (!is.double(v) && !is.integer(v) && !is.logical(v))
       stop(sprintf("simdfuse: `%s` is of class %s; only double, integer and logical vectors are supported",
                    nm, paste(class(v), collapse = "/")), call. = FALSE)
     len <- length(v)

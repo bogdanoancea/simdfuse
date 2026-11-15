@@ -191,7 +191,7 @@ SF_TARGET static void SF_NAME(sf_powi_block)(const double *a, double *d,
 
 SF_TARGET void SF_NAME(sf_exec_block)(
     const int *code, int ncode, const double *consts,
-    const double *const *vars, const int *var_scalar,
+    const void *const *vars, const int *var_scalar, const int *var_type,
     R_xlen_t start, int blen, double *regs, int nreg, int B, int math_fast)
 {
   int bpad = ((blen + SF_W - 1) / SF_W) * SF_W;
@@ -209,11 +209,28 @@ SF_TARGET void SF_NAME(sf_exec_block)(
     switch (op) {
     case SF_OP_LOADV: {
       double *d_ = rd;
+      /* An integer or logical input is converted here rather than up front.
+       * This path already copied the block into a register, so the conversion
+       * replaces the memcpy instead of adding a pass: no second vector is
+       * allocated and the data is touched exactly as often as before.
+       * NA_INTEGER is INT_MIN and must become NA_real_, not the double
+       * -2147483648, so that is.na() and base R agree. */
       if (var_scalar[a]) {
-        double v = vars[a][0];
+        double v;
+        if (var_type[a] == SF_VT_DBL) {
+          v = ((const double *)vars[a])[0];
+        } else {
+          int iv = ((const int *)vars[a])[0];
+          v = (iv == NA_INTEGER) ? NA_REAL : (double)iv;
+        }
         for (int j = 0; j < bpad; j++) d_[j] = v;
+      } else if (var_type[a] == SF_VT_DBL) {
+        memcpy(d_, (const double *)vars[a] + start, (size_t)blen * sizeof(double));
+        for (int j = blen; j < bpad; j++) d_[j] = 0.0;
       } else {
-        memcpy(d_, vars[a] + start, (size_t)blen * sizeof(double));
+        const int *s_ = (const int *)vars[a] + start;
+        for (int j = 0; j < blen; j++)
+          d_[j] = (s_[j] == NA_INTEGER) ? NA_REAL : (double)s_[j];
         for (int j = blen; j < bpad; j++) d_[j] = 0.0;
       }
       break;

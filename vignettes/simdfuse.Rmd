@@ -56,6 +56,24 @@ The reduction forms never build a result vector at all. `sum((x - mu)^2)` in bas
 R materialises two full-length temporaries; the fused form holds a few kilobytes
 whatever the length of `x`:
 
+```
+
+Integer and logical vectors are read in their own storage rather than coerced
+first. The block loader converts each block as it copies into a register --
+work it was doing anyway -- so there is no second vector the size of the input
+and no extra pass over it. `NA_integer_` becomes `NA_real_`, so `is.na()` and
+base R agree.
+
+The side effect is that an integer input is *cheaper* than the equivalent
+double, because there is half as much of it to read:
+
+```{r}
+iv <- sample(1:1000L, 2e6, TRUE)
+dv <- as.double(iv)
+rbind(integer = system.time(for (i in 1:20) sf_sum(quote(iv * 2)))[["elapsed"]],
+      double  = system.time(for (i in 1:20) sf_sum(quote(dv * 2)))[["elapsed"]])
+```
+
 ```{r}
 x <- rnorm(1e5); mu <- mean(x)
 sf_sum(~ (x - mu)^2)
