@@ -14,8 +14,10 @@
 # bounds the cost. The sizes still straddle the cache hierarchy, which is what
 # the fusion result depends on; see the note in sf_bench_fusion.
 #
-# No timing dependency. microbenchmark is only Suggested, and a vignette that
-# dies without it is a nuisance. sf_bench_time calibrates its own repetition
+# No timing dependency, and deliberately none: a vignette that dies because a
+# benchmarking package is missing is a nuisance, and on a cluster or a build
+# farm it is the likeliest thing to be missing. sf_bench_time calibrates its
+# own repetition
 # count against the clock and reports the minimum of several batches, which is
 # the estimator least contaminated by interference from other processes.
 #

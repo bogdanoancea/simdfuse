@@ -23,7 +23,7 @@ Description: Evaluates elementwise R expressions in a single pass over the
 License: GPL-3
 Encoding: UTF-8
 Depends: R (>= 4.0.0)
-Suggests: testthat (>= 3.0.0), knitr, rmarkdown, microbenchmark
+Suggests: testthat (>= 3.0.0), knitr, rmarkdown
 VignetteBuilder: knitr
 NeedsCompilation: yes
 URL: https://github.com/bogdanoancea/simdfuse
