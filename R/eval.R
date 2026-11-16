@@ -196,8 +196,9 @@
 #'   listed by [sf_supported()] are allowed; anything else is an error rather
 #'   than a silent fallback.
 #' @param data Optional list, data frame or environment holding the variables.
-#' @param math `"accurate"` (bit-identical to base R) or `"fast"`. Defaults to
-#'   [sf_options()]`$math`.
+#' @param math `"accurate"` (bit-identical to base R, except for `sqrt()` on a
+#'   platform whose C library square root is not correctly rounded -- see
+#'   [sf_options()]) or `"fast"`. Defaults to [sf_options()]`$math`.
 #' @param block Elements per block; defaults to [sf_options()]`$block`.
 #' @param threads Worker threads; defaults to [sf_options()]`$threads`.
 #'

@@ -27,6 +27,11 @@
 #'   results across heterogeneous machines.
 #' @param math `"accurate"` (default) routes every elementary function through
 #'   the platform `libm` one lane at a time, reproducing base R bit for bit.
+#'   The one exception is `sqrt()`, which every backend takes from the hardware:
+#'   IEEE 754 requires that to be correctly rounded, while base R calls the C
+#'   library, and on R 4.5.2 for Windows the library result is one ulp away from
+#'   the true root for roughly one argument in two thousand. simdfuse returns
+#'   the correctly rounded value there and so differs from base R.
 #'   `"fast"` uses vectorised polynomial `exp()` and `log()` and allows
 #'   fused multiply-add contraction, which is faster but not bit-identical;
 #'   see `vignette("accuracy", package = "simdfuse")` for measured error.

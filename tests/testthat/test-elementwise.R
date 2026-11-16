@@ -40,10 +40,21 @@ test_that("elementwise results are bit-identical to base R on every ISA", {
   )
 
   for_each_isa(function(isa) {
+    # sqrt is asserted on its own terms, because the C library sqrt that base R
+    # calls is not correctly rounded on every platform (see helper-sf.R). The
+    # reference for the composite cases then uses the same square root simdfuse
+    # produces, so those cases test the arithmetic around it rather than the
+    # library. Constants are left to base R: sqrt(2 * pi) sits 0.023 ulp from
+    # the midpoint between two doubles, far enough out that no plausible
+    # extended-precision intermediate rounds it the other way.
+    expect_sqrt_identical(sf_eval(quote(sqrt(a))), sqrt(a), a, info = "sqrt(a)")
+    sq <- function(v) if (length(v) > 1L) sf_eval(quote(sqrt(v))) else base::sqrt(v)
+    env <- new.env(parent = environment())
+    env$sqrt <- sq
     for (ex in cases) {
-      want <- eval(ex)
+      want <- eval(ex, env)
       got <- sf_eval(ex)
-      expect_identical(got, want, info = deparse(ex))
+      expect_identical(got, want, info = paste(deparse(ex), "under", isa))
     }
   })
 })
@@ -78,7 +89,8 @@ test_that("edge and special values propagate as in base R", {
     expect_identical(sf_eval(quote(z + w)), z + w)
     expect_identical(sf_eval(quote(z * w)), z * w)
     expect_identical(sf_eval(quote(z / w)), z / w)
-    expect_identical(sf_eval(quote(sqrt(z))), suppressWarnings(sqrt(z)))
+    expect_sqrt_identical(sf_eval(quote(sqrt(z))), suppressWarnings(sqrt(z)), z,
+                          info = "sqrt(edge values)")
     expect_identical(sf_eval(quote(abs(z))), abs(z))
     expect_identical(sf_eval(quote(z^2)), z^2)
     expect_identical(sf_eval(quote(pmin(z, w))), pmin(z, w))

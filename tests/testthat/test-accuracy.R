@@ -15,8 +15,13 @@ test_that("accurate mode reproduces base R bit for bit", {
   for_each_isa(function(isa) {
     expect_identical(sf_eval(quote(exp(x)), math = "accurate"), exp(x))
     expect_identical(sf_eval(quote(log(y)), math = "accurate"), log(y))
+    # sqrt is checked against the true root rather than against base R, whose
+    # C library sqrt is not correctly rounded on every platform; the fused
+    # expression is then referenced to that verified square root.
+    sqy <- sf_eval(quote(sqrt(y)), math = "accurate")
+    expect_sqrt_identical(sqy, sqrt(y), y, info = "sqrt(y)")
     expect_identical(sf_eval(quote(x * y + sqrt(y)), math = "accurate"),
-                     x * y + sqrt(y))
+                     x * y + sqy)
   })
 })
 
@@ -122,10 +127,27 @@ test_that("%% is exact where base R warns of accuracy loss", {
   x <- c(1e300, 1e300); y <- c(7, 7)
   sf_val <- sf_eval(quote(x %% y))[1]
 
-  # independent reference: 1e300 is an exact integer, so long-divide its digits
-  digits <- as.numeric(strsplit(format(1e300, scientific = FALSE), "")[[1]])
-  ref <- 0
-  for (d in digits) ref <- (ref * 10 + d) %% 7
+  # Independent reference. A double is an exact integer mantissa times a power
+  # of two, so the remainder follows from modular arithmetic on those two parts
+  # and never needs the 301-digit decimal expansion. Every intermediate below
+  # stays under 7^2, so this is exact in double precision on any platform.
+  # Deriving the reference from format() instead would make the test depend on
+  # the C library: glibc and Apple libc print the exact expansion of 1e300,
+  # while the Microsoft CRT prints 17 significant digits and pads with zeros,
+  # which is a different integer with a different remainder.
+  md <- function(a, p) a - floor(a / p) * p
+  mant <- 1e300; expo <- 0
+  while (mant >= 2^53) { mant <- mant / 2; expo <- expo + 1 }
+  stopifnot(mant == floor(mant))
+  hi <- floor(mant / 2^26); lo <- mant - hi * 2^26
+  ref <- md(md(hi, 7) * md(2^26, 7) + md(lo, 7), 7)
+  pw <- 1; bse <- md(2, 7); k <- expo
+  while (k > 0) {
+    if (k %% 2 == 1) pw <- md(pw * bse, 7)
+    bse <- md(bse * bse, 7)
+    k <- k %/% 2
+  }
+  ref <- md(ref * pw, 7)
 
   expect_identical(sf_val, ref)
   expect_false(isTRUE(all.equal(r_val, ref)))

@@ -17,8 +17,9 @@ than a silent fallback.}
 
 \item{data}{Optional list, data frame or environment holding the variables.}
 
-\item{math}{\code{"accurate"} (bit-identical to base R) or \code{"fast"}. Defaults to
-\code{\link[=sf_options]{sf_options()}}\verb{$math}.}
+\item{math}{\code{"accurate"} (bit-identical to base R, except for \code{sqrt()} on a
+platform whose C library square root is not correctly rounded -- see
+\code{\link[=sf_options]{sf_options()}}) or \code{"fast"}. Defaults to \code{\link[=sf_options]{sf_options()}}\verb{$math}.}
 
 \item{block}{Elements per block; defaults to \code{\link[=sf_options]{sf_options()}}\verb{$block}.}
 

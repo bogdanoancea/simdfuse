@@ -25,19 +25,44 @@ vignette is built, on your machine.
 ## Elementwise arithmetic is bit-identical
 
 In the default `math = "accurate"` mode, every elementwise expression returns
-the same bits as base R. Elementary functions are routed through the same
-platform `libm` that R calls, one lane at a time; `pnorm`, `dnorm`, `plogis` and
-`qlogis` call R's own routines rather than being rebuilt from `erfc`.
+the same bits as base R, with one exception described below. Elementary
+functions are routed through the same platform `libm` that R calls, one lane at
+a time; `pnorm`, `dnorm`, `plogis` and `qlogis` call R's own routines rather
+than being rebuilt from `erfc`.
 
 ```{r}
 x <- runif(1e5, 0.1, 10); y <- runif(1e5, -5, 5); mu <- 2.5; s <- 1.25
-c(arith   = identical(sf(x * y + sqrt(x) - 2.5), x * y + sqrt(x) - 2.5),
+c(arith   = identical(sf(x * y - 2.5), x * y - 2.5),
   expo    = identical(sf(exp(y)), exp(y)),
   logs    = identical(sf(log(x, 2)), log(x, 2)),
   powers  = identical(sf(x^3 - y^2), x^3 - y^2),
   dist    = identical(sf(dnorm(y, mu, s)), dnorm(y, mu, s)),
   ifelses = identical(sf(ifelse(x > y, x, y)), ifelse(x > y, x, y)))
 ```
+
+## The exception: `sqrt` on a platform whose `libm` is not correctly rounded
+
+`sqrt` is the one function simdfuse does not take from `libm`. Every backend
+uses the hardware square root -- `sqrtsd`, `vsqrtpd`, `fsqrt` -- which IEEE 754
+requires to be correctly rounded. Base R reaches `sqrt` through a function
+pointer in its internal `math1()`, so it always gets the C library routine, and
+not every C library returns the correctly rounded value.
+
+```{r}
+c(bit_identical = identical(sf(sqrt(x)), sqrt(x)),
+  disagreements = sum(sf(sqrt(x)) != sqrt(x)))
+```
+
+On glibc and on Apple's `libm` that is `TRUE` and `0`. On R 4.5.2 for Windows
+it is `FALSE`, with about one argument in two thousand differing by exactly one
+ulp. In every case examined there, the true root lay within 2e-4 of the
+midpoint between two adjacent doubles -- the signature of a result computed to
+extended precision and then rounded a second time -- and comparing `r^2` with
+`x` in exact arithmetic showed the hardware value to be the nearer of the two.
+So simdfuse is the more accurate of the pair on that platform, and the price is
+that it is not bit-identical to base R there. The package's test suite asserts
+this explicitly rather than relaxing to a tolerance: a differing element is
+accepted only where our value is provably the nearer root.
 
 Three details took real care and are worth knowing about:
 
@@ -181,6 +206,7 @@ in the reverse order.
 | | guarantee |
 |---|---|
 | elementwise, `math = "accurate"` | bit-identical to base R |
+| `sqrt` | correctly rounded; bit-identical to base R wherever the platform `libm` is also correctly rounded |
 | elementwise, `math = "fast"` | `exp` within 2 ulp, `log` within 4 ulp; `NA` becomes `NaN`. Per-function, and only where measurement showed the polynomial wins -- otherwise bit-identical to base R |
 | reductions | identical across thread counts; not bit-identical to `sum()` |
 | reductions across block size or instruction set | not guaranteed; pin both if it matters |
