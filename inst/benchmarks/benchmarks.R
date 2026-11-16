@@ -301,7 +301,8 @@ sf_bench_threads <- function(p) {
   # earlier version did -- meant that R CMD build, which is how the vignette
   # is normally produced, reported two threads on every machine regardless of
   # its core count.
-  if (nzchar(Sys.getenv("_R_CHECK_LIMIT_CORES_"))) mx <- min(mx, 2L)
+  if (nzchar(Sys.getenv("_R_CHECK_LIMIT_CORES_")) ||
+      nzchar(Sys.getenv("_R_CHECK_PACKAGE_NAME_"))) mx <- min(mx, 2L)
   if (!is.na(p$thread_cap)) mx <- min(mx, p$thread_cap)
   mx <- max(1L, as.integer(mx))
   # A geometric ladder, plus the maximum itself: 1 2 4 8 12 on twelve cores

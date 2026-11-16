@@ -3,6 +3,9 @@
 ^\.DS_Store$
 ^\.github$
 ^\.build-artifacts$
-^\.Rhistory$
-^doc$
-^Meta$
+^\.gitignore$
+^simdfuse-design-note\.docx$
+^Claude outputs
+^cran-comments\.md$
+^.*\.Rcheck$
+^.*\.tar\.gz$

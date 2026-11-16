@@ -11,6 +11,12 @@ vignette: >
 knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
 library(simdfuse)
 set.seed(20260114)
+# A check is allowed at most two cores, so the thread sweep below shortens
+# there. R CMD check sets these while it runs vignette code; R CMD build, which
+# is how this page is normally produced, sets neither, so an ordinary build
+# still shows the full sweep.
+in_check <- nzchar(Sys.getenv("_R_CHECK_PACKAGE_NAME_")) ||
+            nzchar(Sys.getenv("_R_CHECK_LIMIT_CORES_"))
 ulp <- function(got, want) {
   ok <- is.finite(want) & want != 0 & is.finite(got)
   max(abs(got[ok] - want[ok]) / 2^(floor(log2(abs(want[ok]))) - 52))
@@ -149,7 +155,8 @@ answer is therefore the same on one thread and on sixty:
 
 ```{r}
 z <- rnorm(1e6) * 10^runif(1e6, -8, 8)   # a deliberately brutal summation
-vals <- vapply(1:4, function(k) sf_sum(quote(z), threads = k), 0)
+ks <- if (in_check) 1:2 else 1:4         # a check gets at most two cores
+vals <- vapply(ks, function(k) sf_sum(quote(z), threads = k), 0)
 length(unique(vals)) == 1L
 ```
 

@@ -26,7 +26,6 @@ Depends: R (>= 4.0.0)
 Suggests: testthat (>= 3.0.0), knitr, rmarkdown, microbenchmark
 VignetteBuilder: knitr
 NeedsCompilation: yes
-Biarch: true
 URL: https://github.com/bogdanoancea/simdfuse
 BugReports: https://github.com/bogdanoancea/simdfuse/issues
 Config/roxygen2/version: 8.1.1

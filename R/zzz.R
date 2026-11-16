@@ -10,11 +10,20 @@
   .sf$cache <- new.env(parent = emptyenv())
   .sf$cache_order <- character(0)
 
+  # CRAN requires that a package's examples, tests and vignettes use at most
+  # two cores. R CMD check sets _R_CHECK_PACKAGE_NAME_ while it runs any of
+  # them, and _R_CHECK_LIMIT_CORES_ on the flavours that police core use, so
+  # either one means the default has to be capped. Only the default moves: an
+  # explicit `threads =` argument is always honoured, and outside a check the
+  # default is still every thread OpenMP offers.
+  in_check <- nzchar(Sys.getenv("_R_CHECK_PACKAGE_NAME_")) ||
+              nzchar(Sys.getenv("_R_CHECK_LIMIT_CORES_"))
+
   op <- options()
   defaults <- list(
     simdfuse.block     = 128L,
     simdfuse.block_red = NA_integer_,
-    simdfuse.threads   = 0L,       # 0 = every thread OpenMP offers
+    simdfuse.threads   = if (in_check) 2L else 0L,   # 0 = all OpenMP offers
     simdfuse.isa       = "auto",
     simdfuse.math      = "accurate",
     simdfuse.fast_exp  = TRUE,

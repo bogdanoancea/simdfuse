@@ -28,7 +28,8 @@ typedef void (*sf_stencil_fn)(const double*, R_xlen_t, const double*, int, doubl
   extern void sf_stencil_apply_##suf(const double*, R_xlen_t, const double*, int, double*);
 
 SF_DECL(scalar)
-#if defined(__x86_64__) || defined(_M_X64) || defined(__i386__)
+#if (defined(__x86_64__) || defined(__i386__)) && \
+    (defined(__GNUC__) || defined(__clang__))
 SF_DECL(sse2)
 SF_DECL(avx2)
 SF_DECL(avx512)
@@ -53,7 +54,8 @@ static void sf_select_isa(const char *want) {
   int force = (want && strcmp(want, "auto") != 0);
   int unavailable = 0;
   g_forced = 0;
-#if defined(__x86_64__) || defined(_M_X64) || defined(__i386__)
+#if (defined(__x86_64__) || defined(__i386__)) && \
+    (defined(__GNUC__) || defined(__clang__))
   const int has512 = __builtin_cpu_supports("avx512f");
   const int has2   = __builtin_cpu_supports("avx2") && __builtin_cpu_supports("fma");
   const int hasse  = __builtin_cpu_supports("sse2");
@@ -308,7 +310,8 @@ SEXP C_sf_info(void) {
 
   const char *avail[8]; int na = 0;
   avail[na++] = "scalar";
-#if defined(__x86_64__) || defined(_M_X64) || defined(__i386__)
+#if (defined(__x86_64__) || defined(__i386__)) && \
+    (defined(__GNUC__) || defined(__clang__))
   if (__builtin_cpu_supports("sse2")) avail[na++] = "sse2";
   if (__builtin_cpu_supports("avx2") && __builtin_cpu_supports("fma")) avail[na++] = "avx2";
   if (__builtin_cpu_supports("avx512f")) avail[na++] = "avx512";

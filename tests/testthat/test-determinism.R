@@ -5,13 +5,11 @@ test_that("parallel reductions are deterministic in the thread count", {
   set.seed(7)
   x <- rnorm(n) * 10^runif(n, -8, 8)   # wide exponent range, worst case for summation
   y <- runif(n)
-  mx <- sf_info()$max_threads
-
   ref_sum  <- sf_sum(quote(x * y + sqrt(y)), threads = 1L)
   ref_mean <- sf_mean(quote(x * y), threads = 1L)
   ref_prod <- sf_prod(quote(1 + y / 1e9), threads = 1L)
 
-  for (th in unique(c(1L, 2L, 3L, 4L, mx))) {
+  for (th in sf_test_threads()) {
     expect_identical(sf_sum(quote(x * y + sqrt(y)), threads = th), ref_sum,
                      info = paste("threads =", th))
     expect_identical(sf_mean(quote(x * y), threads = th), ref_mean,
@@ -26,7 +24,7 @@ test_that("elementwise results are deterministic in threads and block size", {
   set.seed(8)
   x <- rnorm(n); y <- runif(n, 0.1, 5)
   ref <- sf_eval(quote(x * y + log(y) - exp(-x)), threads = 1L, block = 512L)
-  for (th in c(1L, 2L, 4L))
+  for (th in sf_test_threads())
     for (blk in c(64L, 512L, 4096L))
       expect_identical(sf_eval(quote(x * y + log(y) - exp(-x)),
                                threads = th, block = blk), ref,
@@ -38,7 +36,7 @@ test_that("scan is deterministic in the thread count", {
   set.seed(9)
   x <- rnorm(n)
   ref <- sf_scan(quote(x), "sum", threads = 2L)
-  for (th in c(2L, 3L, 4L))
+  for (th in sf_test_threads(2L))
     expect_identical(sf_scan(quote(x), "sum", threads = th), ref)
   # max and min are order-independent, so the parallel scan reproduces base R
   expect_identical(sf_scan(quote(x), "max"), cummax(x))

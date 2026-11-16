@@ -73,3 +73,20 @@ expect_sqrt_identical <- function(got, want, x, info = NULL) {
   }
   testthat::expect_identical(got, want, info = info)
 }
+
+# Thread counts for the determinism sweeps. CRAN allows a check at most two
+# cores, so under R CMD check the ladder stops at two; a local run -- where
+# devtools and testthat both set NOT_CRAN -- sweeps up to the real maximum,
+# which is the configuration the guarantee actually needs testing in.
+# `from` is the lowest thread count the caller's reference is comparable with:
+# the parallel scan reassociates `sum`, so its serial path is a different
+# answer by design and that sweep starts at two.
+sf_test_threads <- function(from = 1L) {
+  ks <- if (!identical(Sys.getenv("NOT_CRAN"), "true") ||
+            nzchar(Sys.getenv("_R_CHECK_LIMIT_CORES_")) ||
+            nzchar(Sys.getenv("_R_CHECK_PACKAGE_NAME_")))
+    c(1L, 2L)
+  else
+    unique(c(1L, 2L, 3L, 4L, as.integer(sf_info()$max_threads)))
+  ks[ks >= from]
+}
