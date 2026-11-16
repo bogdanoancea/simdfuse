@@ -28,5 +28,5 @@ VignetteBuilder: knitr
 NeedsCompilation: yes
 URL: https://github.com/bogdanoancea/simdfuse
 BugReports: https://github.com/bogdanoancea/simdfuse/issues
-Config/roxygen2/version: 8.1.1
+Config/roxygen2/version: 8.1.0
 Roxygen: list(markdown = TRUE)
