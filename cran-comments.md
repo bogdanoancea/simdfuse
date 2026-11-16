@@ -6,18 +6,33 @@
   -- scalar, SSE2 and AVX2 backends compiled and exercised
 * Linux, x86_64 (AMD EPYC 7713), R 4.5.x
   -- scalar, SSE2 and AVX2 backends compiled and exercised
-* win-builder, R-devel and R-release  <RUN BEFORE SUBMITTING>
+* win-builder, R-devel (2026-11-14 r90890 ucrt), x86_64-w64-mingw32,
+  gcc 14.3.0 -- scalar, SSE2, AVX2 and AVX-512 kernels all compiled
 
 ## R CMD check results
 
-macOS, R 4.6.1, `--as-cran` with `_R_CHECK_LIMIT_CORES_=TRUE`:
+0 errors | 0 warnings | 1 note, on every environment above.
 
-    0 errors | 0 warnings | 1 note
+macOS, R 4.6.1, `--as-cran` with `_R_CHECK_LIMIT_CORES_=TRUE`:
 
     * checking CRAN incoming feasibility ... NOTE
       New submission
 
-Other platforms: <FILL IN -- this file should not be submitted with a placeholder>
+win-builder R-devel:
+
+    * checking CRAN incoming feasibility ... NOTE
+      New submission
+
+      Possibly misspelled words in DESCRIPTION:
+        AVX (12:37, 12:46)
+        FMA (12:56)
+        SIMD (3:14)
+        vectorises (14:29)
+
+All four are intended. AVX, FMA and SIMD are the standard names for the
+instruction-set extensions and the execution model the package targets, and
+they are what a user searching for this functionality would look for.
+"vectorises" is British spelling, used consistently throughout the package.
 
 ## Notes for the reviewer
 
