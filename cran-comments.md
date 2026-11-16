@@ -4,8 +4,10 @@
   -- NEON and scalar backends compiled and exercised
 * Windows 11, x86_64-w64-mingw32, R 4.5.2 (Rtools45)
   -- scalar, SSE2 and AVX2 backends compiled and exercised
-* Linux, x86_64 (AMD EPYC 7713), R 4.5.x
-  -- scalar, SSE2 and AVX2 backends compiled and exercised
+* Ubuntu 24.04.4, x86_64-pc-linux-gnu (AMD EPYC 7713), R 4.6.2, gcc 13.3.0
+  -- scalar, SSE2, AVX2 and AVX-512 kernels compiled; tests and examples run
+  with AVX2 selected on 64 cores. Vignettes and the PDF manual were skipped
+  there, as that machine has neither pandoc nor a TeX installation.
 * win-builder, R-devel (2026-11-14 r90890 ucrt), x86_64-w64-mingw32,
   gcc 14.3.0 -- scalar, SSE2, AVX2 and AVX-512 kernels all compiled
 
