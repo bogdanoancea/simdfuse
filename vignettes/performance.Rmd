@@ -65,7 +65,7 @@ cross <- opn[which(sp_big >= 1)]
 cross <- if (length(cross)) min(cross) else NA
 ```
 
-A word on reading the numbers. Each measurement is the fastest of several
+Details on reading the numbers. Each measurement is the fastest of several
 timed batches, and the spread across those batches is recorded alongside it.
 On a shared or thermally throttled machine -- any laptop, and anything with
 asymmetric cores -- repeated threaded measurements of the same expression can
