@@ -41,19 +41,38 @@ test_that("reductions handle NA, NaN and Inf as base R does", {
 })
 
 test_that("a fused reduction allocates no vector of results", {
+  # A resource threshold, not a correctness property, so it is not worth a
+  # failure on one of CRAN's flavours over an allocator difference.
+  skip_on_cran()
+
   n <- 2e6L
   x <- runif(n)
   mu <- mean(x)
-  peak <- function(f) {
+
+  # gc()'s "max used" is a high-water mark for the whole session, so comparing
+  # two of them measures the session's baseline as much as the allocation under
+  # test: with baseline B and temporaries T, p_base = B + T against p_sf = B
+  # only satisfies p_sf < 0.75 * p_base when T > B/3. That held in a fresh
+  # session and failed on R 4.0 with more loaded. Measure the increment.
+  peak_delta <- function(f) {
     gc(reset = TRUE, full = TRUE)
+    before <- unname(gc(full = TRUE)["Vcells", "used"])
     invisible(f())
-    unname(gc(full = TRUE)["Vcells", "max used"])
+    unname(gc(full = TRUE)["Vcells", "max used"]) - before
   }
-  p_base <- peak(function() sum((x - mu)^2 + sqrt(x)))
-  p_sf   <- peak(function() sf_sum(quote((x - mu)^2 + sqrt(x))))
-  # Base R materialises three n-length temporaries; the fused reduction holds
-  # only its register file, which is a few kilobytes.
-  expect_lt(p_sf, p_base * 0.75)
+
+  d_base <- peak_delta(function() sum((x - mu)^2 + sqrt(x)))
+  d_sf   <- peak_delta(function() sf_sum(quote((x - mu)^2 + sqrt(x))))
+
+  # One n-length double vector is n Vcells. Base R materialises three of them;
+  # the fused reduction holds only its register file, a few kilobytes, so it
+  # must stay well under a single vector's worth.
+  expect_true(d_base > n,
+    info = sprintf("base R allocated %.3g Vcells for n = %d; expected > n",
+                   d_base, n))
+  expect_true(d_sf < n / 4,
+    info = sprintf("simdfuse allocated %.3g Vcells (base R %.3g) for n = %d; expected < n/4",
+                   d_sf, d_base, n))
 })
 
 test_that("the compiled-kernel form matches the one-shot form", {
