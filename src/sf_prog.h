@@ -15,7 +15,25 @@
 #include "sf_ops.h"
 
 #define SF_TASK_ELEMS 65536
-#define SF_MIN_PARALLEL 131072
+
+/* Tasks a worker must receive before it is worth creating.
+ *
+ * Joining a team is not free. Measured on a twelve-thread Raptor Lake-U
+ * laptop, the team costs about 76 us at two threads and 227 us at twelve,
+ * against roughly 46 us of work per task. The previous gate allowed one task
+ * per thread, so just above the parallel threshold a four-thread team did one
+ * task each and lost to the serial path on every expression a benchmark could
+ * throw at it. Requiring several tasks per worker gives up a little
+ * parallelism at small n in exchange for never being slower than one thread.
+ *
+ * The answer does not depend on this. Task boundaries are a function of n
+ * alone, so the thread count cannot move a single bit of the result. */
+#define SF_MIN_TASKS_PER_THREAD 4
+
+/* Serial below this: fewer than two workers' worth of tasks exist. Kept in
+ * step with the constant above so the two gates cannot disagree. */
+#define SF_MIN_PARALLEL \
+  ((R_xlen_t)SF_TASK_ELEMS * SF_MIN_TASKS_PER_THREAD * 2)
 
 typedef struct {
   const int *code;

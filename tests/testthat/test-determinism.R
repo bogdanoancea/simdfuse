@@ -20,7 +20,10 @@ test_that("parallel reductions are deterministic in the thread count", {
 })
 
 test_that("elementwise results are deterministic in threads and block size", {
-  n <- 3e5L
+  # Keep n above the engine's parallel threshold (SF_MIN_PARALLEL, currently
+  # 8 tasks of SF_TASK_ELEMS = 524288 elements), or every setting below falls
+  # back to the serial path and the sweep compares a value with itself.
+  n <- 15e5L
   set.seed(8)
   x <- rnorm(n); y <- runif(n, 0.1, 5)
   ref <- sf_eval(quote(x * y + log(y) - exp(-x)), threads = 1L, block = 512L)
@@ -32,7 +35,9 @@ test_that("elementwise results are deterministic in threads and block size", {
 })
 
 test_that("scan is deterministic in the thread count", {
-  n <- 5e5L
+  # Above the parallel threshold, as above: at a smaller n the scan runs
+  # serially whatever the thread count and this test would pass vacuously.
+  n <- 2e6L
   set.seed(9)
   x <- rnorm(n)
   ref <- sf_scan(quote(x), "sum", threads = 2L)

@@ -131,7 +131,10 @@ SEXP C_sf_scan(SEXP s_code, SEXP s_consts, SEXP s_vars, SEXP s_n, SEXP s_nreg,
       double *fin = sf_prog_final(&P, regs);
       sf_prog_prologue(&P, regs);
 #ifdef _OPENMP
-#pragma omp for schedule(static)
+      /* Within a pass every task reads off[t] and writes tot[t] or its own
+       * slice of o, so the tasks are independent and the schedule cannot
+       * affect the result. Dynamic, so that a slow core takes fewer. */
+#pragma omp for schedule(dynamic, 1)
 #endif
       for (R_xlen_t t = 0; t < ntask; t++) {
         const R_xlen_t lo = t * SF_TASK_ELEMS;
@@ -252,7 +255,10 @@ SEXP C_sf_stencil(SEXP s_code, SEXP s_consts, SEXP s_vars, SEXP s_n, SEXP s_nreg
     sf_prog_prologue(&P, regs);
 
 #ifdef _OPENMP
-#pragma omp for schedule(static)
+    /* Each task refills its own scratch buffer and writes only its own slice
+     * of o, so the schedule cannot affect the result. Dynamic, so that a slow
+     * core takes fewer tasks rather than stalling the team. */
+#pragma omp for schedule(dynamic, 1)
 #endif
     for (R_xlen_t t = 0; t < ntask; t++) {
       const R_xlen_t lo = t * SF_TASK_ELEMS;

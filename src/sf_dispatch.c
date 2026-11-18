@@ -252,11 +252,18 @@ double *sf_prog_regfile(const sf_prog *P, int nthreads) {
 
 int sf_prog_threads(R_xlen_t n, R_xlen_t ntask, int requested) {
 #ifdef _OPENMP
+  /* Each worker must receive SF_MIN_TASKS_PER_THREAD tasks to repay the cost
+   * of joining the team; see the note in sf_prog.h. An explicit request is
+   * honoured only up to that cap, just as it was already capped at the task
+   * count -- a thread with no task to run was never anything but overhead.
+   * Capping cannot change the result, only how long it takes to get it. */
   if (n < SF_MIN_PARALLEL || ntask < 2) return 1;
+  const R_xlen_t cap = ntask / SF_MIN_TASKS_PER_THREAD;
+  if (cap < 2) return 1;
   int mx = omp_get_max_threads();
   if (requested < 1) requested = mx;
   if (requested > mx) requested = mx;
-  if ((R_xlen_t)requested > ntask) requested = (int)ntask;
+  if ((R_xlen_t)requested > cap) requested = (int)cap;
   return requested < 1 ? 1 : requested;
 #else
   (void)n; (void)ntask; (void)requested;

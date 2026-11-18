@@ -8,6 +8,14 @@
  * on n, never on the thread count, and task partials are combined serially in
  * index order in long double -- so a reduction returns the same bits on one
  * thread and on sixty. `omp parallel for reduction(+:)` cannot offer that.
+ *
+ * Because the decomposition and the combine order are both fixed in advance,
+ * *which* thread runs a given task is free, and the loop is scheduled
+ * dynamically: on a hybrid CPU an efficiency core then takes fewer tasks
+ * instead of holding the whole team at the barrier. Do not "restore"
+ * schedule(static) in the name of reproducibility -- determinism here comes
+ * from the task boundaries and the serial combine below, not from the
+ * schedule, exactly as it does in the segmented reduce in sf_skeletons.c.
  */
 
 #include "sf_omp.h"   /* first: must precede any R header */
@@ -62,7 +70,10 @@ SEXP C_sf_eval(SEXP s_code, SEXP s_consts, SEXP s_vars, SEXP s_n, SEXP s_nreg,
       sf_prog_prologue(&P, regs);
 
 #ifdef _OPENMP
-#pragma omp for schedule(static)
+      /* dynamic: tasks are independent and the combine order is fixed, so
+       * this is bit-identical to a static schedule and tolerates cores of
+       * unequal speed. See the note at the top of this file. */
+#pragma omp for schedule(dynamic, 1)
 #endif
       for (R_xlen_t t = 0; t < ntask; t++) {
         const R_xlen_t lo = t * SF_TASK_ELEMS;

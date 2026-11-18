@@ -19,7 +19,11 @@
 #'   output vector. `NA` (the default) means use `block` for both. [sf_tune()]
 #'   measures and sets the two separately.
 #' @param threads Worker threads. `0` means every thread OpenMP reports.
-#'   Reductions return identical results at any setting.
+#'   Fewer than requested are used when the data are too small to keep them
+#'   busy: a worker is created only once it would receive several blocks of
+#'   work, because below that the cost of starting the team exceeds what the
+#'   extra thread saves. Reductions return identical results at any setting,
+#'   requested or actual.
 #' @param isa Instruction set: `"auto"` (widest the CPU supports),
 #'   or one of `"avx512"`, `"avx2"`, `"sse2"`, `"neon"`, `"scalar"`. A request
 #'   the hardware cannot satisfy falls back to `"auto"` with a warning. Pinning
