@@ -21,8 +21,51 @@ One binary vectorises on whatever hardware it finds.
 remotes::install_github("bogdanoancea/simdfuse")
 ```
 
-A C compiler is required. OpenMP is used when available and the package works
-without it, single-threaded.
+A C compiler is required. OpenMP is used when available; without it the package
+still works, single-threaded. Check which you got:
+
+```r
+sf_info()$openmp
+```
+
+### OpenMP on macOS
+
+Apple's `clang` ships without an OpenMP runtime, so a source install on macOS
+usually leaves `openmp` as `FALSE`. The fusion itself is unaffected -- that is
+what most of the speedup is -- but the parallel reductions and skeletons fall
+back to one thread. Two ways to get it:
+
+**The CRAN runtime**, which is what R for macOS is configured to look for.
+`R CMD config SHLIB_OPENMP_CFLAGS` prints `-Xclang -fopenmp`, and the headers
+are expected under `/opt/R/<arch>/include`. Download the runtime matching your
+`clang` from <https://mac.r-project.org/openmp/> and follow the instructions
+there; it installs `omp.h` and `libomp.dylib` where R already looks, and
+nothing else is needed.
+
+**Or Homebrew**, in which case you have to point R at it yourself:
+
+```sh
+brew install libomp
+```
+
+```make
+# ~/.R/Makevars
+CPPFLAGS += -I/opt/homebrew/opt/libomp/include
+LDFLAGS  += -L/opt/homebrew/opt/libomp/lib
+```
+
+Use `/usr/local/opt/libomp` instead of `/opt/homebrew/opt/libomp` on an Intel
+Mac. If a build fails with `'omp.h' file not found`, that include path is the
+thing that is missing. If it fails with `unsupported option '-fopenmp'`, your R
+was configured for a compiler that has OpenMP while you are building with one
+that does not; you can accept single-threaded operation by overriding the flag
+to nothing:
+
+```make
+# ~/.R/Makevars
+SHLIB_OPENMP_CFLAGS=
+SHLIB_OPENMP_CXXFLAGS=
+```
 
 ## Fused elementwise evaluation
 
@@ -153,7 +196,7 @@ Speedup over base R depends on how many operations the expression contains, on
 the lane width, and on whether the problem is bandwidth-bound. These are
 measured figures from two machines, not projections:
 
-| | Apple Silicon, NEON, 2 lanes, 10 cores | AMD EPYC 7713, AVX2, 4 lanes, 64 cores |
+| | Apple M1 Max, NEON, 2 lanes, 10 cores | AMD EPYC 7713, AVX2, 4 lanes, 64 cores |
 |---|---|---|
 | elementwise, growing expressions | 1.40x at 2 operations, 2.58x at 8, 3.06x at 16 | 0.94x to 3.21x, rising with operation count |
 | reductions, one thread | 2.78x to 3.47x | -- |
@@ -171,8 +214,28 @@ placement matters more than either: 93 GB/s unbound against 160 GB/s bound to
 one socket, which the package cannot fix because R allocates the vectors
 single-threaded before simdfuse is ever called.
 
+One row deserves a warning rather than a footnote. **The parallel reduction
+figures are bounded by memory bandwidth, not by core count**, and the machine
+in that column is a laptop with an unusually wide memory system. A fused
+reduction reads its operands once and does a few operations on each, so a
+single Apple performance core already draws a large share of the machine's
+bandwidth and the remaining cores have little left to claim. On an M1 Max,
+with roughly 400 GB/s, there is room and parallelism buys 6.5x to 12.8x. On a
+thin laptop with 100-120 GB/s, measured on the same code, one core reaches
+about two thirds of the total and parallelism buys around 1.5x on top of the
+2x to 3x that fusion gives -- so the honest number there is near 3x, not 12x.
+Core count predicts almost none of this.
+
+The same measurement separates the two causes cleanly: on that thin laptop an
+`exp`-heavy reduction keeps improving out to all ten threads, while
+`sum((x - mu)^2)` stops gaining at eight. Where there is arithmetic to do,
+every core contributes; where the only scarce resource is bandwidth, they
+cannot. A practical consequence the rest of this document does not give you:
+for a short expression over a large vector, try fewer threads than the
+maximum, because more is sometimes worse.
+
 `vignette("performance")` measures all of this on the machine that builds it,
-so the numbers describe your hardware rather than ours.
+which is the only number that describes your hardware rather than ours.
 
 ## Limitations
 
