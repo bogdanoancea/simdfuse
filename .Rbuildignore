@@ -10,3 +10,5 @@
 ^.*\.Rcheck$
 ^.*\.tar\.gz$
 ^.*\.log$
+^sf-.*\.csv$
+^sf-.*\.R$

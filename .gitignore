@@ -21,6 +21,7 @@ build/
 # benchmark output: regenerate it, never commit it, since every number in it
 # is specific to the machine that produced it
 inst/benchmarks/*.csv
+/sf-*.csv
 
 # macOS directory metadata
 .DS_Store
@@ -36,3 +37,4 @@ Claude outputs/
 *.sbatch
 sf-*.log
 epyc-*.log
+/sf-*.R
