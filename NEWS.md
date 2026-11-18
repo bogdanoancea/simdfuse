@@ -31,3 +31,19 @@ First release.
   to be correctly rounded, whereas base R calls the C library, and not every C
   library is. Where the two disagree simdfuse returns the correctly rounded
   value. See `vignette("accuracy")`.
+
+* The thread count is chosen from the work available rather than from what
+  OpenMP reports: a worker is created only once it would receive enough tasks
+  to repay the cost of starting the team, and what that takes depends on the
+  expression. A streaming expression needs several tasks per worker; one
+  calling `exp()`, `log()` or another libm function per element needs only
+  one, such tasks being some forty times more expensive. A request for more
+  threads than the data can keep busy is honoured only as far as it pays.
+  Results never depend on the count, so this governs how long an answer takes
+  and nothing else.
+
+* `sf_scan()` is deterministic in the thread count, but its serial and
+  parallel paths do not produce the same answer: the parallel scan
+  reassociates the operator, and which path runs depends on `n` through the
+  rule above. Reductions and elementwise evaluation are unaffected and return
+  identical bits at any setting.

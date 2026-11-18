@@ -20,6 +20,8 @@ test_that("parallel reductions are deterministic in the thread count", {
 })
 
 test_that("elementwise results are deterministic in threads and block size", {
+  # This expression calls log() and exp() per element, so it parallelises from
+  # 2 tasks (131072 elements) up; n is comfortably above that.
   n <- 3e5L
   set.seed(8)
   x <- rnorm(n); y <- runif(n, 0.1, 5)
@@ -32,7 +34,11 @@ test_that("elementwise results are deterministic in threads and block size", {
 })
 
 test_that("scan is deterministic in the thread count", {
-  n <- 5e5L
+  # `x` alone is a streaming expression, so it needs 4 tasks per worker --
+  # 8 tasks, 524288 elements -- before the engine will parallelise at all.
+  # Below that the scan runs serially whatever the thread count and this test
+  # would pass vacuously, comparing a value with itself.
+  n <- 2e6L
   set.seed(9)
   x <- rnorm(n)
   ref <- sf_scan(quote(x), "sum", threads = 2L)

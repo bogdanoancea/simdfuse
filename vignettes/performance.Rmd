@@ -91,6 +91,14 @@ cat(sprintf(
 
 `r if (scale != "full") sprintf("The timings here use the **%s** profile, which keeps vector lengths modest so that building this vignette stays quick. The full profile uses vectors of %s elements, where the effects below are larger because the data no longer fits in any cache. To reproduce the author's numbers, run <code>Rscript inst/benchmarks/bench-run.R</code>.", scale, fmt_n(1e7)) else "This is the full profile."`
 
+The two sections that measure threading -- *Reductions* and *Thread scaling*
+-- ignore that profile and use at least
+`r fmt_n(SF_BENCH_PAR_FLOOR)` elements whatever size you build at. Below about
+three million the engine deliberately runs a streaming expression on one
+thread, because a worker that receives only a task or two costs more to start
+than it saves, so a smaller sweep would compare the serial path with itself
+and report threading as a slowdown. Each figure states the length it used.
+
 ## Fusion
 
 Base R evaluates an array expression one operator at a time, allocating and

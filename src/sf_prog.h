@@ -15,7 +15,34 @@
 #include "sf_ops.h"
 
 #define SF_TASK_ELEMS 65536
-#define SF_MIN_PARALLEL 131072
+
+/* Tasks a worker must receive before it is worth creating.
+ *
+ * Joining a team is not free. Measured on a twelve-thread Raptor Lake-U
+ * laptop, the team costs about 76 us at two threads and 227 us at twelve.
+ * Whether that is worth paying depends entirely on what a task costs, and
+ * tasks are not interchangeable: a streaming `max(x * x)` task took 46 us on
+ * that machine while a `sum(exp(x))` task through the platform libm took
+ * 1874 us -- a factor of forty. So the gate asks two questions, not one.
+ *
+ * For an ordinary streaming expression a worker needs several tasks before
+ * the team repays itself. The previous gate allowed one task per thread, so
+ * just above the parallel threshold a four-thread team did one task each and
+ * lost to the serial path on every expression a benchmark could throw at it.
+ *
+ * For an expression that calls libm once per element, one task already
+ * repays it many times over, and applying the streaming floor would throw
+ * away most of the parallelism on exactly the expressions best able to use
+ * it -- measured at 1.6x on sum(exp(x)). Such a program keeps the original,
+ * permissive gate; see sf_prog_heavy() in sf_dispatch.c.
+ *
+ * Neither value can move a result. Task boundaries are a function of n
+ * alone, so the thread count cannot change a single bit of the answer. */
+#define SF_MIN_TASKS_PER_THREAD 4
+
+/* Minimum n for a program needing `need` tasks per worker: two workers'
+ * worth, so that the gate below and this one can never disagree. */
+#define SF_MIN_PARALLEL_FOR(need) ((R_xlen_t)SF_TASK_ELEMS * (need) * 2)
 
 typedef struct {
   const int *code;
@@ -67,8 +94,11 @@ double *sf_prog_final(const sf_prog *P, double *regs);
 /* Allocate an aligned per-thread register file via R_alloc. */
 double *sf_prog_regfile(const sf_prog *P, int nthreads);
 
-/* Resolve a usable thread count for a given workload. */
-int sf_prog_threads(R_xlen_t n, R_xlen_t ntask, int requested);
+/* Resolve a usable thread count for a given workload. Needs the program
+ * because how many threads pay for themselves depends on what a task costs,
+ * not only on how many tasks there are. */
+int sf_prog_threads(const sf_prog *P, R_xlen_t n, R_xlen_t ntask,
+                    int requested);
 
 /* Apply stencil weights to a contiguous buffer. `v` must hold len+nw-1
  * values (the window halo is the caller's responsibility); `out` receives

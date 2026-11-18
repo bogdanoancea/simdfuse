@@ -205,8 +205,25 @@ sf_bench_mathfun <- function(p) {
 }
 
 # ---- 3. reductions ---------------------------------------------------------
+# Floor for the two benchmarks that measure threading.
+#
+# Threading does not engage until the engine has tasks to hand out. A
+# streaming expression needs SF_MIN_TASKS_PER_THREAD (4) tasks of 65536
+# elements per worker, so a twelve-thread machine needs about 3.1M elements
+# before a sweep measures anything at all; below that the engine correctly
+# runs serially and every "all threads" bar is the serial path wearing a
+# different label. The `tiny` and `quick` profiles sit far below that, which
+# is how a vignette built for CRAN came to report threading as a slowdown.
+#
+# These two benchmarks therefore set their own n, independent of the size
+# profile. They are single-pass and cheap, so the floor costs about a second
+# even at `tiny`. Expressions that call libm per element parallelise from a
+# much smaller n, but the floor is set for the streaming case because that is
+# what these two measure.
+SF_BENCH_PAR_FLOOR <- 4e6
+
 sf_bench_reduce <- function(p) {
-  n <- p$n
+  n <- max(p$n, SF_BENCH_PAR_FLOOR)
   x <- runif(n, 0.1, 10); mu <- mean(x); m <- 3; sg <- 1.5
   env <- environment()
   cases <- list(
@@ -313,7 +330,7 @@ sf_bench_threads <- function(p) {
   # capped this at two or four and so under-reported every real machine.
   ks <- sort(unique(c(2L^(0:ceiling(log2(mx))), mx)))
   ks <- ks[ks >= 1L & ks <= mx]
-  n <- p$n_thread
+  n <- max(p$n_thread, SF_BENCH_PAR_FLOOR)
   a <- runif(n, 0.5, 2); b <- runif(n, 0.5, 2)
   env <- environment()
   ex <- quote((a + b * 0.5 - a * 0.25) * (a - b) + a / b - 1)

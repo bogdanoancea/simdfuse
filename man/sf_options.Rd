@@ -33,7 +33,11 @@ output vector. \code{NA} (the default) means use \code{block} for both. \code{\l
 measures and sets the two separately.}
 
 \item{threads}{Worker threads. \code{0} means every thread OpenMP reports.
-Reductions return identical results at any setting.}
+Fewer than requested are used when the data are too small to keep them
+busy: a worker is created only once it would receive several blocks of
+work, because below that the cost of starting the team exceeds what the
+extra thread saves. Reductions return identical results at any setting,
+requested or actual.}
 
 \item{isa}{Instruction set: \code{"auto"} (widest the CPU supports),
 or one of \code{"avx512"}, \code{"avx2"}, \code{"sse2"}, \code{"neon"}, \code{"scalar"}. A request

@@ -72,7 +72,7 @@ SEXP C_sf_scan(SEXP s_code, SEXP s_consts, SEXP s_vars, SEXP s_n, SEXP s_nreg,
   if (n == 0) { UNPROTECT(1); return out; }
 
   const R_xlen_t ntask = (n + SF_TASK_ELEMS - 1) / SF_TASK_ELEMS;
-  const int nthreads = sf_prog_threads(n, ntask, INTEGER(s_threads)[0]);
+  const int nthreads = sf_prog_threads(&P, n, ntask, INTEGER(s_threads)[0]);
   const double id = sf_identity(op);
   const size_t per = (size_t)P.nreg * (size_t)P.B;
   (void)per;   /* only read in the OpenMP branch */
@@ -131,7 +131,10 @@ SEXP C_sf_scan(SEXP s_code, SEXP s_consts, SEXP s_vars, SEXP s_n, SEXP s_nreg,
       double *fin = sf_prog_final(&P, regs);
       sf_prog_prologue(&P, regs);
 #ifdef _OPENMP
-#pragma omp for schedule(static)
+      /* Within a pass every task reads off[t] and writes tot[t] or its own
+       * slice of o, so the tasks are independent and the schedule cannot
+       * affect the result. Dynamic, so that a slow core takes fewer. */
+#pragma omp for schedule(dynamic, 1)
 #endif
       for (R_xlen_t t = 0; t < ntask; t++) {
         const R_xlen_t lo = t * SF_TASK_ELEMS;
@@ -230,7 +233,7 @@ SEXP C_sf_stencil(SEXP s_code, SEXP s_consts, SEXP s_vars, SEXP s_n, SEXP s_nreg
   }
 
   const R_xlen_t ntask = (n + SF_TASK_ELEMS - 1) / SF_TASK_ELEMS;
-  const int nthr = sf_prog_threads(n, ntask, INTEGER(s_threads)[0]);
+  const int nthr = sf_prog_threads(&P, n, ntask, INTEGER(s_threads)[0]);
   const size_t per = (size_t)P.nreg * (size_t)P.B;
   (void)per;   /* only read in the OpenMP branch */
   const size_t scr = (size_t)SF_TASK_ELEMS + (size_t)nw - 1;
@@ -252,7 +255,10 @@ SEXP C_sf_stencil(SEXP s_code, SEXP s_consts, SEXP s_vars, SEXP s_n, SEXP s_nreg
     sf_prog_prologue(&P, regs);
 
 #ifdef _OPENMP
-#pragma omp for schedule(static)
+    /* Each task refills its own scratch buffer and writes only its own slice
+     * of o, so the schedule cannot affect the result. Dynamic, so that a slow
+     * core takes fewer tasks rather than stalling the team. */
+#pragma omp for schedule(dynamic, 1)
 #endif
     for (R_xlen_t t = 0; t < ntask; t++) {
       const R_xlen_t lo = t * SF_TASK_ELEMS;
@@ -336,7 +342,7 @@ SEXP C_sf_segreduce(SEXP s_code, SEXP s_consts, SEXP s_vars, SEXP s_n,
 
   /* Runs are independent, so this parallelises without any merge step and
    * stays deterministic: within a run, blocks combine in index order. */
-  const int nthr = sf_prog_threads(n, nrun, INTEGER(s_threads)[0]);
+  const int nthr = sf_prog_threads(&P, n, nrun, INTEGER(s_threads)[0]);
   const size_t per = (size_t)P.nreg * (size_t)P.B;
   (void)per;   /* only read in the OpenMP branch */
   double *rf = sf_prog_regfile(&P, nthr);
