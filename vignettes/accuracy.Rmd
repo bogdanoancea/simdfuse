@@ -124,12 +124,16 @@ crossover is not a property of the lane count alone -- it also depends on how
 good the local `libm` is. Measured against glibc, the polynomial `log()` runs at
 0.54x of `libm` on the scalar backend, 0.74x on SSE2, 1.55x on AVX2 and 3.08x on
 AVX-512; measured against Apple's `libm` on two-lane NEON, polynomial `exp()`
-wins at 1.71x where polynomial `log()` loses at 0.80x. The same lane count, the
-same package, opposite answers.
+won at 1.71x on one M-series machine and lost at 0.76x on an M1 Max, while
+polynomial `log()` lost on both. The same lane count, the same package,
+opposite answers -- and on Windows, whose C runtime is far slower, the
+polynomial won by 5x to 13x on AVX2.
 
 So the choice is per function and per machine, and it is measured rather than
-predicted. `sf_tune()` times both ways and sets `fast_exp` and `fast_log`
-accordingly; they can also be set by hand.
+predicted. The default enables the polynomial only at four lanes or more, the
+one range in which it has not lost anywhere it was measured; `sf_tune()` times
+both ways on the machine in hand and sets `fast_exp` and `fast_log`
+accordingly, and they can also be set by hand.
 
 ```{r}
 unlist(sf_options()[c("fast_exp", "fast_log")])

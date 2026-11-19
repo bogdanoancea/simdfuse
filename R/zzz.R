@@ -19,6 +19,17 @@
   in_check <- nzchar(Sys.getenv("_R_CHECK_PACKAGE_NAME_")) ||
               nzchar(Sys.getenv("_R_CHECK_LIMIT_CORES_"))
 
+  # Fast-math default: on only where the vectorised polynomial has won on every
+  # machine measured, which is at four lanes or more. AVX2 and AVX-512 beat
+  # glibc (log 1.55x and 3.08x) and beat the Windows C runtime by 5x to 13x.
+  # At two lanes it is a coin toss that mostly lands the wrong way: SSE2 loses
+  # to glibc, and against Apple's libm on NEON exp() has measured 1.71x on one
+  # M-series machine and 0.76x on an M1 Max, while log() lost on both. A
+  # default that is wrong on a platform costs speed and accuracy at once, so
+  # narrow vectors start on libm and sf_tune() turns the polynomial on where it
+  # actually pays.
+  wide <- isTRUE(.sf$info$lanes >= 4L)
+
   op <- options()
   defaults <- list(
     simdfuse.block     = 128L,
@@ -26,8 +37,8 @@
     simdfuse.threads   = if (in_check) 2L else 0L,   # 0 = all OpenMP offers
     simdfuse.isa       = "auto",
     simdfuse.math      = "accurate",
-    simdfuse.fast_exp  = TRUE,
-    simdfuse.fast_log  = TRUE,
+    simdfuse.fast_exp  = wide,
+    simdfuse.fast_log  = wide,
     simdfuse.cache_max = 256L
   )
   toset <- !(names(defaults) %in% names(op))

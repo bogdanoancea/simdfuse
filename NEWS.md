@@ -24,7 +24,11 @@ First release.
   function; `sf_disassemble()` prints the instruction stream.
 
 * `sf_tune()` measures the host and selects the block size and the per-function
-  fast-math settings for it.
+  fast-math settings for it. Until it is run, `math = "fast"` uses the
+  vectorised `exp()` and `log()` only on backends of four lanes or more (AVX2,
+  AVX-512), the range in which they have beaten the system `libm` on every
+  machine measured; on two-lane SSE2 and NEON, where they have mostly lost, it
+  keeps the system `libm`.
 
 * `math = "accurate"` reproduces base R bit for bit. The one exception is
   `sqrt()`, which every backend takes from the hardware: IEEE 754 requires that

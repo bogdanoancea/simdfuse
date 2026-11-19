@@ -165,9 +165,10 @@ sf_tune <- function(blocks = c(64L, 128L, 256L, 512L, 1024L, 2048L, 4096L),
   ## Deliberately measured rather than assumed. The polynomial has a fixed
   ## operation count per vector, so it only amortises once there are enough
   ## lanes to pay for it -- but how many is enough depends on the local libm.
-  ## Measured: 0.54x at 1 lane and 1.70x at 8 lanes against glibc, yet 1.71x
-  ## at 2 lanes against Apple's libm. Neither lane count nor platform predicts
-  ## it alone, so each function is timed both ways on this machine.
+  ## Measured: 0.54x at 1 lane and 1.70x at 8 lanes against glibc; at 2 lanes
+  ## against Apple's libm, 1.71x on one M-series machine and 0.76x on an M1
+  ## Max. Neither lane count nor platform predicts it alone, so each function
+  ## is timed both ways on this machine.
   if (!quiet) cat("\nfast math (vectorised polynomial vs system libm)\n")
   old_f <- list(exp = getOption("simdfuse.fast_exp"),
                 log = getOption("simdfuse.fast_log"))

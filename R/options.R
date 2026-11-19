@@ -41,10 +41,13 @@
 #'   see `vignette("accuracy", package = "simdfuse")` for measured error.
 #' @param fast_exp,fast_log Whether `math = "fast"` uses the vectorised
 #'   polynomial for that function, rather than the platform `libm`. Whether the
-#'   polynomial actually wins depends on the lane width and on the quality of
-#'   the local `libm`, and the two do not point the same way: a two-lane NEON
-#'   `exp()` beat Apple's `libm` by 1.7x while a two-lane SSE2 `exp()` lost to
-#'   glibc by 0.9x. [sf_tune()] measures both and sets them.
+#'   polynomial wins depends on the lane width and on the quality of the local
+#'   `libm`, and the two do not point the same way. At four lanes or more it has
+#'   won everywhere measured, by 1.5x to 13x; at two lanes it has mostly lost,
+#'   and against Apple's `libm` on NEON the same `exp()` measured 1.71x on one
+#'   M-series machine and 0.76x on an M1 Max. The default is therefore `TRUE`
+#'   on AVX2 and AVX-512 and `FALSE` on narrower backends, and [sf_tune()]
+#'   measures both on the machine in hand and sets them.
 #' @param cache_max Number of compiled programs to keep.
 #'
 #' @return A list of the settings in effect, invisibly when setting.

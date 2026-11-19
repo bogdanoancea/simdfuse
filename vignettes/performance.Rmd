@@ -135,7 +135,10 @@ operator case ran `r sprintf("%.2fx", sp_big[["1 op"]])`, that is
 Base R calls the platform `libm` once per element for `exp()` and `log()`, and
 no auto-vectoriser can change that because it cannot see inside the library
 call. The default `math = "accurate"` mode makes the same calls, so it is
-expected to sit near parity; `math = "fast"` substitutes SIMD polynomials.
+expected to sit near parity; `math = "fast"` substitutes SIMD polynomials
+where they pay -- by default on four-lane backends and wider, and anywhere
+`sf_tune()` has measured them faster. On a two-lane machine that has not been
+tuned, the fast column therefore uses the system `libm` too.
 
 ```{r tab-mathfun, results = "asis"}
 cat("| expression | base R | accurate | fast | fast speedup |\n|---|---|---|---|---|\n")

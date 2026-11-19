@@ -58,10 +58,13 @@ see \code{vignette("accuracy", package = "simdfuse")} for measured error.}
 
 \item{fast_exp, fast_log}{Whether \code{math = "fast"} uses the vectorised
 polynomial for that function, rather than the platform \code{libm}. Whether the
-polynomial actually wins depends on the lane width and on the quality of
-the local \code{libm}, and the two do not point the same way: a two-lane NEON
-\code{exp()} beat Apple's \code{libm} by 1.7x while a two-lane SSE2 \code{exp()} lost to
-glibc by 0.9x. \code{\link[=sf_tune]{sf_tune()}} measures both and sets them.}
+polynomial wins depends on the lane width and on the quality of the local
+\code{libm}, and the two do not point the same way. At four lanes or more it has
+won everywhere measured, by 1.5x to 13x; at two lanes it has mostly lost,
+and against Apple's \code{libm} on NEON the same \code{exp()} measured 1.71x on one
+M-series machine and 0.76x on an M1 Max. The default is therefore \code{TRUE}
+on AVX2 and AVX-512 and \code{FALSE} on narrower backends, and \code{\link[=sf_tune]{sf_tune()}}
+measures both on the machine in hand and sets them.}
 
 \item{cache_max}{Number of compiled programs to keep.}
 }

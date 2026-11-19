@@ -38,10 +38,12 @@ enum {
 
 /* Fast-math is a bitmask rather than a flag: whether a vectorised polynomial
  * beats the platform libm depends on the lane width *and* on how good that
- * libm is, and those pull in different directions on different machines. A
- * two-lane NEON exp() beat Apple's libm by 1.7x while a two-lane SSE2 exp()
- * lost to glibc by 0.9x, so the choice has to be made per function and per
- * machine. sf_tune() measures it. */
+ * libm is, and those pull in different directions on different machines. On
+ * two-lane NEON the same exp() beat Apple's libm by 1.71x on one M-series
+ * machine and lost at 0.76x on an M1 Max, and a two-lane SSE2 exp() lost to
+ * glibc, so the choice has to be made per function and per machine. The R
+ * default enables it only at four lanes or more, where it has never lost;
+ * sf_tune() measures it. */
 /* How an input vector is stored. R's logical and integer vectors are both
  * int arrays and share NA_INTEGER == INT_MIN as their missing value, so they
  * convert identically and need no separate code. */
